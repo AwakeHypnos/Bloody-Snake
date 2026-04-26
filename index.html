@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bloody Snake - Roguelike</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui-overlay">
+            <div id="health-container">
+                <div id="hearts"></div>
+            </div>
+            <div id="room-info">
+                <span id="room-count">房间: 0/3</span>
+                <span id="room-type" class="room-type"></span>
+            </div>
+        </div>
+        <div id="start-screen" class="screen">
+            <h1>🐍 BLOODY SNAKE 🐍</h1>
+            <p>一款Roguelike像素冒险游戏</p>
+            <div class="instructions">
+                <h3>游戏说明：</h3>
+                <ul>
+                    <li>收集3个苹果即可通关</li>
+                    <li>探索3个不同类型的房间</li>
+                    <li>初始生命：5颗心</li>
+                    <li>受击损失1颗心</li>
+                </ul>
+            </div>
+            <button id="start-btn">开始游戏</button>
+        </div>
+        <div id="game-over-screen" class="screen hidden">
+            <h1>游戏结束</h1>
+            <p id="game-over-message">你死了！</p>
+            <button id="restart-btn">重新开始</button>
+        </div>
+        <div id="victory-screen" class="screen hidden">
+            <h1>🎉 恭喜通关！ 🎉</h1>
+            <p>你成功收集了所有苹果！</p>
+            <button id="play-again-btn">再玩一次</button>
+        </div>
+        <div id="transition-screen" class="screen hidden">
+            <h2 id="transition-text">进入下一个房间...</h2>
+        </div>
+    </div>
+    <script src="game.js"></script>
+</body>
+</html>
