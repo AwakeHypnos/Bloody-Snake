@@ -348,7 +348,7 @@ class SnakeRoom {
         ];
         
         this.applesEaten = 0;
-        this.applesNeeded = 5;
+        this.applesNeeded = 13;
         this.roomApple = null;
         this.roomAppleSpawned = false;
         
@@ -1275,8 +1275,8 @@ class SpaceshipRoom {
                 y: -50,
                 width: 40,
                 height: 50,
-                health: 5,
-                speed: 2,
+                health: 4,
+                speed: 1,
                 type: 'plane',
                 shootTimer: 0,
                 shootCooldown: 1500
@@ -1294,7 +1294,7 @@ class SpaceshipRoom {
             maxHealth: 50,
             moveDirection: 1,
             shootTimer: 0,
-            shootCooldown: 600,
+            shootCooldown: 1000,
             patternTimer: 0,
             pattern: 0,
             beamTimer: 0
@@ -1957,9 +1957,9 @@ class JumpRoom {
             height: 60,
             vx: 0,
             vy: 0,
-            speed: 5,
+            speed: 2,
             jumpPower: -15,
-            gravity: 0.6,
+            gravity: 0.5,
             onGround: false,
             isJumping: false
         };
