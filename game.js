@@ -171,10 +171,9 @@ class Game {
     }
     
     gameLoop(currentTime = 0) {
-        if (this.state === GAME_STATES.MENU || 
-            this.state === GAME_STATES.GAME_OVER || 
-            this.state === GAME_STATES.VICTORY ||
-            this.state === GAME_STATES.TRANSITION) {
+        requestAnimationFrame((time) => this.gameLoop(time));
+        
+        if (this.state !== GAME_STATES.PLAYING) {
             return;
         }
         
@@ -191,8 +190,6 @@ class Game {
             this.currentRoom.update(deltaTime);
             this.currentRoom.render(this.ctx);
         }
-        
-        requestAnimationFrame((time) => this.gameLoop(time));
     }
 }
 
