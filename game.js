@@ -1,13 +1,14 @@
 const CANVAS_WIDTH = 800;
 const CANVAS_HEIGHT = 600;
-const TILE_SIZE = 20;
+const TILE_SIZE = 40;
 const INITIAL_HEALTH = 5;
-const ROOMS_TO_WIN = 3;
+const ROOMS_TO_WIN = 4;
 
 const ROOM_TYPES = {
     SNAKE: 'snake',
     SHOOTER: 'shooter',
-    SPACESHIP: 'spaceship'
+    SPACESHIP: 'spaceship',
+    JUMP: 'jump'
 };
 
 const GAME_STATES = {
@@ -97,7 +98,7 @@ class Game {
         this.showTransition();
         
         setTimeout(() => {
-            const availableTypes = [ROOM_TYPES.SNAKE, ROOM_TYPES.SHOOTER, ROOM_TYPES.SPACESHIP];
+            const availableTypes = [ROOM_TYPES.SNAKE, ROOM_TYPES.SHOOTER, ROOM_TYPES.SPACESHIP, ROOM_TYPES.JUMP];
             const randomIndex = Math.floor(Math.random() * availableTypes.length);
             this.roomType = availableTypes[randomIndex];
             
@@ -115,6 +116,10 @@ class Game {
                 case ROOM_TYPES.SPACESHIP:
                     this.currentRoom = new SpaceshipRoom(this);
                     document.getElementById('room-type').textContent = '🚀 宇宙飞船房间';
+                    break;
+                case ROOM_TYPES.JUMP:
+                    this.currentRoom = new JumpRoom(this);
+                    document.getElementById('room-type').textContent = '🦘 跳跃房间';
                     break;
             }
             
@@ -331,7 +336,10 @@ class SnakeRoom {
         this.direction = { x: 1, y: 0 };
         this.nextDirection = { x: 1, y: 0 };
         this.moveTimer = 0;
-        this.moveInterval = 150;
+        this.normalMoveInterval = 200;
+        this.boostedMoveInterval = 80;
+        this.moveInterval = this.normalMoveInterval;
+        this.isBoosted = false;
         
         this.snake = [
             { x: 5, y: Math.floor(this.gridHeight / 2) },
@@ -340,7 +348,7 @@ class SnakeRoom {
         ];
         
         this.applesEaten = 0;
-        this.applesNeeded = 13;
+        this.applesNeeded = 5;
         this.roomApple = null;
         this.roomAppleSpawned = false;
         
@@ -415,6 +423,20 @@ class SnakeRoom {
     }
     
     handleInput() {
+        const pressingSameDirection = 
+            (this.game.keys['ArrowUp'] && this.direction.y === -1) ||
+            (this.game.keys['ArrowDown'] && this.direction.y === 1) ||
+            (this.game.keys['ArrowLeft'] && this.direction.x === -1) ||
+            (this.game.keys['ArrowRight'] && this.direction.x === 1);
+        
+        if (pressingSameDirection && !this.isBoosted) {
+            this.isBoosted = true;
+            this.moveInterval = this.boostedMoveInterval;
+        } else if (!pressingSameDirection && this.isBoosted) {
+            this.isBoosted = false;
+            this.moveInterval = this.normalMoveInterval;
+        }
+        
         if (this.game.keys['ArrowUp'] && this.direction.y !== 1) {
             this.nextDirection = { x: 0, y: -1 };
         } else if (this.game.keys['ArrowDown'] && this.direction.y !== -1) {
@@ -778,7 +800,8 @@ class ShooterRoom {
         if (this.game.keys['ArrowLeft'] && this.player.x > 10) {
             this.player.x -= this.player.speed;
         }
-        if (this.game.keys['ArrowRight'] && this.player.x < CANVAS_WIDTH / 2) {
+        const maxX = this.bossDefeated ? CANVAS_WIDTH - this.player.width - 10 : CANVAS_WIDTH / 2;
+        if (this.game.keys['ArrowRight'] && this.player.x < maxX) {
             this.player.x += this.player.speed;
         }
     }
@@ -846,7 +869,7 @@ class ShooterRoom {
         const dx = this.player.x - enemy.x;
         const dy = this.player.y - enemy.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const speed = 5;
+        const speed = 1.25;
         
         this.enemyBullets.push({
             x: enemy.x,
@@ -871,8 +894,8 @@ class ShooterRoom {
                         y: centerY,
                         width: 12,
                         height: 12,
-                        vx: Math.cos(rad) * 4,
-                        vy: Math.sin(rad) * 4
+                        vx: Math.cos(rad) * 1,
+                        vy: Math.sin(rad) * 1
                     });
                 }
                 break;
@@ -887,8 +910,8 @@ class ShooterRoom {
                         y: centerY,
                         width: 12,
                         height: 12,
-                        vx: (dx / dist) * 5 + i * 0.5,
-                        vy: (dy / dist) * 5
+                        vx: (dx / dist) * 1.25 + i * 0.25,
+                        vy: (dy / dist) * 1.25
                     });
                 }
                 break;
@@ -905,8 +928,8 @@ class ShooterRoom {
                                 y: this.boss.y + this.boss.height / 2,
                                 width: 15,
                                 height: 8,
-                                vx: (dx2 / dist2) * 7,
-                                vy: (dy2 / dist2) * 7
+                                vx: (dx2 / dist2) * 1.75,
+                                vy: (dy2 / dist2) * 1.75
                             });
                         }
                     }, i * 150);
@@ -1028,24 +1051,41 @@ class ShooterRoom {
     renderPlayer(ctx) {
         const x = this.player.x;
         const y = this.player.y;
+        const w = this.player.width;
+        const h = this.player.height;
+        const segmentSize = 8;
         
-        ctx.fillStyle = '#06d6a0';
-        ctx.beginPath();
-        ctx.moveTo(x + this.player.width, y + this.player.height / 2);
-        ctx.lineTo(x, y);
-        ctx.lineTo(x + 10, y + this.player.height / 2);
-        ctx.lineTo(x, y + this.player.height);
-        ctx.closePath();
-        ctx.fill();
+        const snakeSegments = [
+            { x: x + w - 5, y: y + h / 2 - segmentSize / 2, w: segmentSize, h: segmentSize, isHead: true },
+            { x: x + w - 15, y: y + h / 2 - segmentSize / 2, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w - 25, y: y + h / 2 - segmentSize / 2, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w - 25, y: y + h / 2 - segmentSize * 2, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w - 25, y: y + h / 2 + segmentSize, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w - 35, y: y + h / 2 - segmentSize / 2, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w - 35, y: y + h / 2 - segmentSize * 3, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w - 35, y: y + h / 2 + segmentSize * 2, w: segmentSize, h: segmentSize, isHead: false },
+        ];
         
-        ctx.fillStyle = '#4cc9f0';
-        ctx.fillRect(x + 5, y + this.player.height / 2 - 5, 15, 10);
+        snakeSegments.forEach((seg, index) => {
+            if (seg.isHead) {
+                ctx.fillStyle = '#06d6a0';
+                ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+                
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(seg.x + 2, seg.y + 1, 2, 2);
+                ctx.fillRect(seg.x + 2, seg.y + 5, 2, 2);
+            } else {
+                ctx.fillStyle = '#118ab2';
+                ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+            }
+        });
         
         ctx.fillStyle = '#ff6b6b';
+        const flameOffset = Math.random() * 5;
         ctx.beginPath();
-        ctx.moveTo(x, y + this.player.height / 4);
-        ctx.lineTo(x - 15, y + this.player.height / 2);
-        ctx.lineTo(x, y + this.player.height * 3 / 4);
+        ctx.moveTo(x + w - 40, y + h / 2 - 5);
+        ctx.lineTo(x + w - 50 - flameOffset, y + h / 2);
+        ctx.lineTo(x + w - 40, y + h / 2 + 5);
         ctx.closePath();
         ctx.fill();
     }
@@ -1443,7 +1483,7 @@ class SpaceshipRoom {
         const dx = this.player.x + this.player.width / 2 - (enemy.x + enemy.width / 2);
         const dy = this.player.y - (enemy.y + enemy.height);
         const distance = Math.sqrt(dx * dx + dy * dy);
-        const speed = 5;
+        const speed = 1.25;
         
         this.enemyBullets.push({
             x: enemy.x + enemy.width / 2 - 6,
@@ -1469,8 +1509,8 @@ class SpaceshipRoom {
                         y: centerY,
                         width: 16,
                         height: 16,
-                        vx: Math.cos(rad) * 4,
-                        vy: Math.sin(rad) * 4
+                        vx: Math.cos(rad) * 1,
+                        vy: Math.sin(rad) * 1
                     });
                 }
                 break;
@@ -1488,7 +1528,7 @@ class SpaceshipRoom {
                                 width: 20,
                                 height: 10,
                                 vx: 0,
-                                vy: 8
+                                vy: 2
                             });
                         }
                     }, i * 200);
@@ -1503,8 +1543,8 @@ class SpaceshipRoom {
                         y: centerY,
                         width: 14,
                         height: 14,
-                        vx: Math.cos(rad) * 3,
-                        vy: Math.sin(rad) * 3
+                        vx: Math.cos(rad) * 0.75,
+                        vy: Math.sin(rad) * 0.75
                     });
                 }
                 break;
@@ -1651,37 +1691,52 @@ class SpaceshipRoom {
     renderPlayer(ctx) {
         const x = this.player.x;
         const y = this.player.y;
+        const w = this.player.width;
+        const h = this.player.height;
+        const segmentSize = 8;
         
-        ctx.fillStyle = '#0077b6';
-        ctx.beginPath();
-        ctx.moveTo(x + this.player.width / 2, y);
-        ctx.lineTo(x + this.player.width, y + this.player.height);
-        ctx.lineTo(x, y + this.player.height);
-        ctx.closePath();
-        ctx.fill();
+        const snakeSegments = [
+            { x: x + w / 2 - segmentSize / 2, y: y, w: segmentSize, h: segmentSize, isHead: true },
+            { x: x + w / 2 - segmentSize / 2, y: y + segmentSize, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w / 2 - segmentSize / 2, y: y + segmentSize * 2, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w / 2 - segmentSize / 2, y: y + segmentSize * 3, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w / 2 - segmentSize * 1.5, y: y + segmentSize * 2, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w / 2 + segmentSize / 2, y: y + segmentSize * 2, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w / 2 - segmentSize * 2, y: y + segmentSize * 3, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w / 2 + segmentSize, y: y + segmentSize * 3, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w / 2 - segmentSize * 2.5, y: y + segmentSize * 4, w: segmentSize, h: segmentSize, isHead: false },
+            { x: x + w / 2 + segmentSize * 1.5, y: y + segmentSize * 4, w: segmentSize, h: segmentSize, isHead: false },
+        ];
         
-        ctx.strokeStyle = '#000';
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        
-        ctx.fillStyle = '#00b4d8';
-        ctx.beginPath();
-        ctx.arc(x + this.player.width / 2, y + 20, 12, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
+        snakeSegments.forEach((seg, index) => {
+            if (seg.isHead) {
+                ctx.fillStyle = '#06d6a0';
+                ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+                
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(seg.x + 1, seg.y + 2, 2, 2);
+                ctx.fillRect(seg.x + 5, seg.y + 2, 2, 2);
+            } else {
+                ctx.fillStyle = '#118ab2';
+                ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+            }
+        });
         
         ctx.fillStyle = '#ff6b6b';
+        const flameOffset1 = Math.random() * 8;
+        const flameOffset2 = Math.random() * 8;
+        
         ctx.beginPath();
-        ctx.moveTo(x + 10, y + this.player.height);
-        ctx.lineTo(x + 15, y + this.player.height + 15 + Math.random() * 10);
-        ctx.lineTo(x + 20, y + this.player.height);
+        ctx.moveTo(x + w / 2 - segmentSize * 2, y + h);
+        ctx.lineTo(x + w / 2 - segmentSize * 1.5, y + h + 10 + flameOffset1);
+        ctx.lineTo(x + w / 2 - segmentSize, y + h);
         ctx.closePath();
         ctx.fill();
         
         ctx.beginPath();
-        ctx.moveTo(x + this.player.width - 20, y + this.player.height);
-        ctx.lineTo(x + this.player.width - 15, y + this.player.height + 15 + Math.random() * 10);
-        ctx.lineTo(x + this.player.width - 10, y + this.player.height);
+        ctx.moveTo(x + w / 2 + segmentSize / 2, y + h);
+        ctx.lineTo(x + w / 2 + segmentSize, y + h + 10 + flameOffset2);
+        ctx.lineTo(x + w / 2 + segmentSize * 1.5, y + h);
         ctx.closePath();
         ctx.fill();
     }
@@ -1887,6 +1942,468 @@ class SpaceshipRoom {
             ctx.fillStyle = '#06d6a0';
             ctx.font = '16px Courier New';
             ctx.fillText('向上进入出口！', CANVAS_WIDTH / 2 - 60, 30);
+        }
+    }
+}
+
+class JumpRoom {
+    constructor(game) {
+        this.game = game;
+        
+        this.player = {
+            x: CANVAS_WIDTH / 2 - 20,
+            y: CANVAS_HEIGHT - 80,
+            width: 40,
+            height: 60,
+            vx: 0,
+            vy: 0,
+            speed: 5,
+            jumpPower: -15,
+            gravity: 0.6,
+            onGround: false,
+            isJumping: false
+        };
+        
+        this.platforms = [];
+        this.safePlatforms = [];
+        this.apple = null;
+        this.appleCollected = false;
+        this.exitDoor = null;
+        
+        this.platformCount = 8;
+        this.minPlatformWidth = 80;
+        this.maxPlatformWidth = 150;
+        
+        this.cameraY = 0;
+        this.targetCameraY = 0;
+        this.maxHeight = 0;
+        
+        this.flashTimer = 0;
+        this.flashInterval = 200;
+        
+        this.respawnPlatformIndex = -1;
+        this.isRespawning = false;
+        
+        this.generatePlatforms();
+    }
+    
+    generatePlatforms() {
+        this.platforms = [];
+        
+        const startPlatform = {
+            x: CANVAS_WIDTH / 2 - 60,
+            y: CANVAS_HEIGHT - 30,
+            width: 120,
+            height: 15
+        };
+        this.platforms.push(startPlatform);
+        
+        const verticalSpacing = 80;
+        const horizontalRange = 300;
+        
+        for (let i = 1; i < this.platformCount; i++) {
+            const prevPlatform = this.platforms[i - 1];
+            const width = this.minPlatformWidth + Math.random() * (this.maxPlatformWidth - this.minPlatformWidth);
+            
+            const horizontalOffset = (Math.random() - 0.5) * horizontalRange;
+            let x = prevPlatform.x + horizontalOffset;
+            
+            x = Math.max(20, Math.min(CANVAS_WIDTH - width - 20, x));
+            
+            const y = prevPlatform.y - verticalSpacing - Math.random() * 20;
+            
+            this.platforms.push({
+                x: x,
+                y: y,
+                width: width,
+                height: 15
+            });
+        }
+        
+        const topPlatform = {
+            x: CANVAS_WIDTH / 2 - 80,
+            y: this.platforms[this.platforms.length - 1].y - verticalSpacing,
+            width: 160,
+            height: 15,
+            isTop: true
+        };
+        this.platforms.push(topPlatform);
+        
+        this.apple = {
+            x: topPlatform.x + topPlatform.width / 2 - 20,
+            y: topPlatform.y - 50,
+            width: 40,
+            height: 40,
+            glow: 0
+        };
+    }
+    
+    generateSafePlatforms() {
+        this.safePlatforms = [];
+        
+        const safePlatformY = 80;
+        this.safePlatforms.push({
+            x: 0,
+            y: safePlatformY,
+            width: CANVAS_WIDTH,
+            height: 20
+        });
+        
+        const exitSide = Math.floor(Math.random() * 3);
+        this.exitDoor = {
+            width: 60,
+            height: 50
+        };
+        
+        switch(exitSide) {
+            case 0:
+                this.exitDoor.x = 10;
+                this.exitDoor.y = safePlatformY - 50;
+                break;
+            case 1:
+                this.exitDoor.x = CANVAS_WIDTH - 70;
+                this.exitDoor.y = safePlatformY - 50;
+                break;
+            case 2:
+                this.exitDoor.x = CANVAS_WIDTH / 2 - 30;
+                this.exitDoor.y = 10;
+                break;
+        }
+    }
+    
+    handleInput() {
+        if (this.game.keys['ArrowLeft']) {
+            this.player.vx = -this.player.speed;
+        } else if (this.game.keys['ArrowRight']) {
+            this.player.vx = this.player.speed;
+        } else {
+            this.player.vx *= 0.8;
+            if (Math.abs(this.player.vx) < 0.1) {
+                this.player.vx = 0;
+            }
+        }
+    }
+    
+    update(deltaTime) {
+        this.handleInput();
+        
+        if (this.isRespawning) {
+            return;
+        }
+        
+        if (!this.appleCollected) {
+            this.player.vy += this.player.gravity;
+            
+            if (this.player.onGround && !this.player.isJumping) {
+                this.player.vy = this.player.jumpPower;
+                this.player.isJumping = true;
+                this.player.onGround = false;
+            }
+            
+            this.player.x += this.player.vx;
+            this.player.y += this.player.vy;
+            
+            if (this.player.x < 0) {
+                this.player.x = 0;
+                this.player.vx = 0;
+            }
+            if (this.player.x > CANVAS_WIDTH - this.player.width) {
+                this.player.x = CANVAS_WIDTH - this.player.width;
+                this.player.vx = 0;
+            }
+            
+            const currentHeight = CANVAS_HEIGHT - this.player.y;
+            if (currentHeight > this.maxHeight) {
+                this.maxHeight = currentHeight;
+            }
+            
+            const screenCenterY = CANVAS_HEIGHT / 2;
+            if (this.player.y < screenCenterY + this.cameraY) {
+                this.targetCameraY = screenCenterY - this.player.y;
+            }
+            this.cameraY += (this.targetCameraY - this.cameraY) * 0.1;
+            
+            this.player.onGround = false;
+            for (let i = 0; i < this.platforms.length; i++) {
+                const platform = this.platforms[i];
+                if (this.checkPlatformCollision(this.player, platform)) {
+                    if (this.player.vy > 0) {
+                        this.player.y = platform.y - this.player.height;
+                        this.player.vy = 0;
+                        this.player.onGround = true;
+                        this.player.isJumping = false;
+                        this.respawnPlatformIndex = i;
+                    }
+                }
+            }
+            
+            if (this.player.y > CANVAS_HEIGHT + this.cameraY + 100) {
+                this.handleFall();
+            }
+            
+            if (this.apple && this.checkCollision(this.player, this.apple)) {
+                this.appleCollected = true;
+                this.apple = null;
+                this.generateSafePlatforms();
+            }
+        } else {
+            this.player.vy += this.player.gravity * 0.5;
+            this.player.x += this.player.vx;
+            this.player.y += this.player.vy;
+            
+            if (this.player.x < 0) {
+                this.player.x = 0;
+            }
+            if (this.player.x > CANVAS_WIDTH - this.player.width) {
+                this.player.x = CANVAS_WIDTH - this.player.width;
+            }
+            
+            for (const platform of this.safePlatforms) {
+                if (this.checkPlatformCollision(this.player, platform)) {
+                    if (this.player.vy > 0) {
+                        this.player.y = platform.y - this.player.height;
+                        this.player.vy = 0;
+                        this.player.onGround = true;
+                    }
+                }
+            }
+            
+            if (this.exitDoor && this.checkCollision(this.player, this.exitDoor)) {
+                this.game.roomComplete();
+            }
+        }
+        
+        if (this.game.invincibleTime > 0) {
+            this.flashTimer += deltaTime;
+            if (this.flashTimer >= this.flashInterval) {
+                this.flashTimer = 0;
+            }
+        }
+        
+        if (this.apple) {
+            this.apple.glow = (this.apple.glow + deltaTime / 200) % (Math.PI * 2);
+        }
+    }
+    
+    checkPlatformCollision(player, platform) {
+        const playerBottom = player.y + player.height;
+        const playerPrevBottom = playerBottom - player.vy;
+        
+        return player.x + player.width > platform.x &&
+               player.x < platform.x + platform.width &&
+               playerBottom >= platform.y &&
+               playerPrevBottom <= platform.y + 10;
+    }
+    
+    checkCollision(a, b) {
+        return a.x < b.x + b.width &&
+               a.x + a.width > b.x &&
+               a.y < b.y + b.height &&
+               a.y + a.height > b.y;
+    }
+    
+    handleFall() {
+        this.game.takeDamage();
+        
+        if (this.game.health <= 0) {
+            return;
+        }
+        
+        this.isRespawning = true;
+        
+        let respawnPlatform;
+        if (this.respawnPlatformIndex >= 0 && this.respawnPlatformIndex < this.platforms.length) {
+            respawnPlatform = this.platforms[this.respawnPlatformIndex];
+        } else {
+            respawnPlatform = this.platforms[0];
+        }
+        
+        setTimeout(() => {
+            this.player.x = respawnPlatform.x + respawnPlatform.width / 2 - this.player.width / 2;
+            this.player.y = respawnPlatform.y - this.player.height;
+            this.player.vx = 0;
+            this.player.vy = 0;
+            this.player.onGround = true;
+            this.player.isJumping = false;
+            this.cameraY = this.targetCameraY = 0;
+            this.isRespawning = false;
+        }, 500);
+    }
+    
+    render(ctx) {
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+        
+        ctx.save();
+        if (!this.appleCollected) {
+            ctx.translate(0, this.cameraY);
+        }
+        
+        if (!this.appleCollected) {
+            const gridY = Math.floor(this.cameraY / 50) * 50;
+            ctx.strokeStyle = 'rgba(100, 100, 150, 0.1)';
+            ctx.lineWidth = 1;
+            
+            for (let y = gridY - 50; y < CANVAS_HEIGHT + this.cameraY + 100; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(CANVAS_WIDTH, y);
+                ctx.stroke();
+            }
+        }
+        
+        if (this.appleCollected) {
+            for (const platform of this.safePlatforms) {
+                this.renderPlatform(ctx, platform, true);
+            }
+        } else {
+            for (const platform of this.platforms) {
+                this.renderPlatform(ctx, platform, platform.isTop);
+            }
+        }
+        
+        if (this.apple) {
+            this.renderApple(ctx);
+        }
+        
+        if (this.exitDoor) {
+            this.renderExitDoor(ctx);
+        }
+        
+        const showPlayer = this.game.invincibleTime <= 0 || Math.floor(this.flashTimer / (this.flashInterval / 2)) % 2 === 0;
+        if (showPlayer && !this.isRespawning) {
+            this.renderPlayer(ctx);
+        }
+        
+        ctx.restore();
+        
+        this.renderHUD(ctx);
+    }
+    
+    renderPlatform(ctx, platform, isSpecial) {
+        const gradient = ctx.createLinearGradient(platform.x, platform.y, platform.x, platform.y + platform.height);
+        if (isSpecial) {
+            gradient.addColorStop(0, '#ffd700');
+            gradient.addColorStop(1, '#ff8c00');
+        } else {
+            gradient.addColorStop(0, '#4cc9f0');
+            gradient.addColorStop(1, '#0077b6');
+        }
+        
+        ctx.fillStyle = gradient;
+        ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(platform.x, platform.y, platform.width, platform.height);
+        
+        if (isSpecial) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            ctx.fillRect(platform.x + 5, platform.y + 2, platform.width - 10, 3);
+        }
+    }
+    
+    renderPlayer(ctx) {
+        const x = this.player.x;
+        const y = this.player.y;
+        const segmentSize = 10;
+        
+        const springSegments = [
+            { x: x + 15, y: y, w: 10, h: 10, isHead: true },
+            { x: x + 5, y: y + 10, w: 30, h: 8, isHead: false },
+            { x: x + 10, y: y + 18, w: 20, h: 8, isHead: false },
+            { x: x + 5, y: y + 26, w: 30, h: 8, isHead: false },
+            { x: x + 10, y: y + 34, w: 20, h: 8, isHead: false },
+            { x: x + 5, y: y + 42, w: 30, h: 8, isHead: false },
+            { x: x + 10, y: y + 50, w: 20, h: 8, isHead: false },
+        ];
+        
+        springSegments.forEach((seg, index) => {
+            if (seg.isHead) {
+                ctx.fillStyle = '#06d6a0';
+                ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+                
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(seg.x + 1, seg.y + 2, 2, 2);
+                ctx.fillRect(seg.x + 7, seg.y + 2, 2, 2);
+            } else {
+                ctx.fillStyle = index % 2 === 0 ? '#118ab2' : '#073b4c';
+                ctx.fillRect(seg.x, seg.y, seg.w, seg.h);
+            }
+        });
+        
+        if (this.player.vy < 0) {
+            ctx.fillStyle = '#ff6b6b';
+            const flameHeight = Math.min(Math.abs(this.player.vy) * 0.8, 15);
+            
+            ctx.beginPath();
+            ctx.moveTo(x + 10, y + this.player.height);
+            ctx.lineTo(x + 15, y + this.player.height + flameHeight + Math.random() * 5);
+            ctx.lineTo(x + 20, y + this.player.height);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.moveTo(x + 20, y + this.player.height);
+            ctx.lineTo(x + 25, y + this.player.height + flameHeight * 0.7 + Math.random() * 5);
+            ctx.lineTo(x + 30, y + this.player.height);
+            ctx.closePath();
+            ctx.fill();
+        }
+    }
+    
+    renderApple(ctx) {
+        const x = this.apple.x;
+        const y = this.apple.y;
+        const glow = Math.sin(this.apple.glow) * 8 + 8;
+        
+        ctx.beginPath();
+        ctx.arc(x + this.apple.width / 2, y + this.apple.height / 2, this.apple.width / 2 + glow, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.4)';
+        ctx.fill();
+        
+        ctx.fillStyle = '#ffd700';
+        ctx.beginPath();
+        ctx.arc(x + this.apple.width / 2, y + this.apple.height / 2, this.apple.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(x + this.apple.width / 2 - 8, y + this.apple.height / 2 - 8, 6, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    renderExitDoor(ctx) {
+        const x = this.exitDoor.x;
+        const y = this.exitDoor.y;
+        
+        ctx.fillStyle = '#ffd700';
+        ctx.fillRect(x, y, this.exitDoor.width, this.exitDoor.height);
+        
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(x, y, this.exitDoor.width, this.exitDoor.height);
+        
+        ctx.fillStyle = '#000';
+        ctx.font = 'bold 16px Courier New';
+        ctx.fillText('EXIT', x + 8, y + this.exitDoor.height / 2 + 6);
+    }
+    
+    renderHUD(ctx) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '16px Courier New';
+        
+        if (!this.appleCollected) {
+            const heightMeters = Math.floor(this.maxHeight / 10);
+            ctx.fillText(`高度: ${heightMeters}m`, CANVAS_WIDTH / 2 - 40, 30);
+            ctx.fillText('跳上平台向上攀登！', CANVAS_WIDTH / 2 - 70, 55);
+        } else if (this.exitDoor) {
+            ctx.fillStyle = '#06d6a0';
+            ctx.fillText('找到出口离开房间！', CANVAS_WIDTH / 2 - 70, 30);
         }
     }
 }
