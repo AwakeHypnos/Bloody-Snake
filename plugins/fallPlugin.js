@@ -1,99 +1,90 @@
-class JumpRoom extends BaseRoomPlugin {
+class FallRoom extends BaseRoomPlugin {
     constructor(game) {
         super(game);
-        this.roomType = ROOM_TYPES.JUMP;
+        this.roomType = ROOM_TYPES.FALL;
         
         this.player = {
             x: GAME_CONFIG.CANVAS_WIDTH / 2 - 20,
-            y: GAME_CONFIG.CANVAS_HEIGHT - 80,
+            y: 200,
             width: 40,
             height: 60,
             vx: 0,
             vy: 0,
-            speed: 2,
-            jumpPower: -10,
-            gravity: 0.3,
+            speed: 3,
+            gravity: 0.4,
             onGround: false,
-            isJumping: false,
-            jumpCooldown: 0,
-            jumpCooldownDuration: 500
+            isJumping: false
         };
         
         this.platforms = [];
         this.safePlatforms = [];
         this.apple = null;
         this.appleCollected = false;
-        this.exitDoor = null;
         
-        this.platformCount = 8;
-        this.minPlatformWidth = 80;
-        this.maxPlatformWidth = 150;
+        this.totalPlatformsNeeded = 25;
+        this.platformsPassed = 0;
+        this.minPlatformWidth = 60;
+        this.maxPlatformWidth = 120;
+        this.platformVerticalSpacing = 70;
         
-        this.cameraY = 0;
-        this.targetCameraY = 0;
-        this.maxHeight = 0;
+        this.scrollSpeed = 1.0;
         
-        this.respawnPlatformIndex = -1;
+        this.respawnPlatform = null;
         this.isRespawning = false;
+        this.startPlatform = null;
         
-        this.generatePlatforms();
+        this.generateInitialPlatforms();
     }
     
-    generatePlatforms() {
+    generateInitialPlatforms() {
         this.platforms = [];
         
-        const startPlatform = {
-            x: GAME_CONFIG.CANVAS_WIDTH / 2 - 60,
-            y: GAME_CONFIG.CANVAS_HEIGHT - 30,
-            width: 120,
-            height: 15
+        this.startPlatform = {
+            x: GAME_CONFIG.CANVAS_WIDTH / 2 - 80,
+            y: 260,
+            width: 160,
+            height: 15,
+            isStart: true
         };
-        this.platforms.push(startPlatform);
+        this.platforms.push(this.startPlatform);
+        this.respawnPlatform = this.startPlatform;
         
-        const verticalSpacing = 80;
-        const horizontalRange = 300;
+        let lastY = this.startPlatform.y + this.platformVerticalSpacing;
+        const platformCount = Math.ceil(GAME_CONFIG.CANVAS_HEIGHT / this.platformVerticalSpacing) + 3;
         
-        for (let i = 1; i < this.platformCount; i++) {
-            const prevPlatform = this.platforms[i - 1];
+        for (let i = 0; i < platformCount; i++) {
             const width = this.minPlatformWidth + Math.random() * (this.maxPlatformWidth - this.minPlatformWidth);
-            
-            const horizontalOffset = (Math.random() - 0.5) * horizontalRange;
-            let x = prevPlatform.x + horizontalOffset;
-            
-            x = Math.max(20, Math.min(GAME_CONFIG.CANVAS_WIDTH - width - 20, x));
-            
-            const y = prevPlatform.y - verticalSpacing - Math.random() * 20;
+            const x = Math.random() * (GAME_CONFIG.CANVAS_WIDTH - width);
             
             this.platforms.push({
                 x: x,
-                y: y,
+                y: lastY,
                 width: width,
-                height: 15
+                height: 15,
+                passed: false
             });
+            
+            lastY += this.platformVerticalSpacing;
         }
+    }
+    
+    generatePlatformAt(y) {
+        const width = this.minPlatformWidth + Math.random() * (this.maxPlatformWidth - this.minPlatformWidth);
+        const x = Math.random() * (GAME_CONFIG.CANVAS_WIDTH - width);
         
-        const topPlatform = {
-            x: GAME_CONFIG.CANVAS_WIDTH / 2 - 80,
-            y: this.platforms[this.platforms.length - 1].y - verticalSpacing,
-            width: 160,
+        return {
+            x: x,
+            y: y,
+            width: width,
             height: 15,
-            isTop: true
-        };
-        this.platforms.push(topPlatform);
-        
-        this.apple = {
-            x: topPlatform.x + topPlatform.width / 2 - 20,
-            y: topPlatform.y - 50,
-            width: 40,
-            height: 40,
-            glow: 0
+            passed: false
         };
     }
     
     generateSafePlatforms() {
         this.safePlatforms = [];
         
-        const safePlatformY = 80;
+        const safePlatformY = GAME_CONFIG.CANVAS_HEIGHT - 80;
         this.safePlatforms.push({
             x: 0,
             y: safePlatformY,
@@ -101,26 +92,13 @@ class JumpRoom extends BaseRoomPlugin {
             height: 20
         });
         
-        const exitSide = Math.floor(Math.random() * 3);
-        this.exitDoor = {
-            width: 60,
-            height: 50
+        this.apple = {
+            x: GAME_CONFIG.CANVAS_WIDTH / 2 - 20,
+            y: safePlatformY - 50,
+            width: 40,
+            height: 40,
+            glow: 0
         };
-        
-        switch(exitSide) {
-            case 0:
-                this.exitDoor.x = 10;
-                this.exitDoor.y = safePlatformY - 50;
-                break;
-            case 1:
-                this.exitDoor.x = GAME_CONFIG.CANVAS_WIDTH - 70;
-                this.exitDoor.y = safePlatformY - 50;
-                break;
-            case 2:
-                this.exitDoor.x = GAME_CONFIG.CANVAS_WIDTH / 2 - 30;
-                this.exitDoor.y = 10;
-                break;
-        }
     }
     
     handleInput() {
@@ -147,17 +125,6 @@ class JumpRoom extends BaseRoomPlugin {
         if (!this.appleCollected) {
             this.player.vy += this.player.gravity;
             
-            if (this.player.jumpCooldown > 0) {
-                this.player.jumpCooldown -= deltaTime;
-            }
-            
-            if (this.player.onGround && !this.player.isJumping && this.player.jumpCooldown <= 0) {
-                this.player.vy = this.player.jumpPower;
-                this.player.isJumping = true;
-                this.player.onGround = false;
-                this.player.jumpCooldown = this.player.jumpCooldownDuration;
-            }
-            
             this.player.x += this.player.vx;
             this.player.y += this.player.vy;
             
@@ -170,44 +137,79 @@ class JumpRoom extends BaseRoomPlugin {
                 this.player.vx = 0;
             }
             
-            const currentHeight = GAME_CONFIG.CANVAS_HEIGHT - this.player.y;
-            if (currentHeight > this.maxHeight) {
-                this.maxHeight = currentHeight;
+            for (const platform of this.platforms) {
+                platform.y -= this.scrollSpeed;
             }
-            
-            const screenCenterY = GAME_CONFIG.CANVAS_HEIGHT / 2;
-            if (this.player.y < screenCenterY + this.cameraY) {
-                this.targetCameraY = screenCenterY - this.player.y;
-            }
-            this.cameraY += (this.targetCameraY - this.cameraY) * 0.1;
             
             this.player.onGround = false;
-            this.respawnPlatformIndex = -1;
-            for (let i = 0; i < this.platforms.length; i++) {
-                const platform = this.platforms[i];
+            for (const platform of this.platforms) {
                 if (CollisionUtils.checkPlatformCollision(this.player, platform)) {
                     if (this.player.vy > 0) {
                         this.player.y = platform.y - this.player.height;
                         this.player.vy = 0;
                         this.player.onGround = true;
                         this.player.isJumping = false;
-                        this.respawnPlatformIndex = i;
+                        
+                        if (!platform.isStart && !platform.isBottom) {
+                            this.respawnPlatform = platform;
+                        }
+                        
+                        if (!platform.passed && !platform.isStart && !platform.isBottom) {
+                            platform.passed = true;
+                            this.platformsPassed++;
+                        }
                     }
                 }
             }
             
+            const bottomPlatform = this.platforms.reduce((max, p) => 
+                (!p.isBottom && p.y > (max?.y || -Infinity)) ? p : max, null);
+            
+            if (bottomPlatform && bottomPlatform.y < GAME_CONFIG.CANVAS_HEIGHT + 100) {
+                const newPlatform = this.generatePlatformAt(
+                    bottomPlatform.y + this.platformVerticalSpacing
+                );
+                this.platforms.push(newPlatform);
+            }
+            
             this.platforms = this.platforms.filter(platform => {
-                const platformScreenY = platform.y - this.cameraY;
-                return platformScreenY < GAME_CONFIG.CANVAS_HEIGHT + 200;
+                return platform.y + platform.height > -50;
             });
             
-            if (this.player.y > GAME_CONFIG.CANVAS_HEIGHT + this.cameraY + 100) {
-                this.handleFall();
+            if (this.platformsPassed >= this.totalPlatformsNeeded && !this.apple) {
+                const existingBottom = this.platforms.find(p => p.isBottom);
+                if (!existingBottom) {
+                    const bottomPlatform = {
+                        x: 0,
+                        y: GAME_CONFIG.CANVAS_HEIGHT - 50,
+                        width: GAME_CONFIG.CANVAS_WIDTH,
+                        height: 20,
+                        isBottom: true
+                    };
+                    this.platforms.push(bottomPlatform);
+                    
+                    this.apple = {
+                        x: GAME_CONFIG.CANVAS_WIDTH / 2 - 20,
+                        y: bottomPlatform.y - 50,
+                        width: 40,
+                        height: 40,
+                        glow: 0
+                    };
+                }
+            }
+            
+            if (this.player.y + this.player.height < -20) {
+                this.handleHitTop();
+            }
+            
+            if (this.player.y > GAME_CONFIG.CANVAS_HEIGHT + 50) {
+                this.handleFallOff();
             }
             
             if (this.apple && CollisionUtils.checkRectCollision(this.player, this.apple)) {
                 this.appleCollected = true;
                 this.apple = null;
+                this.platforms = [];
                 this.generateSafePlatforms();
             }
         } else {
@@ -232,8 +234,14 @@ class JumpRoom extends BaseRoomPlugin {
                 }
             }
             
-            if (this.exitDoor && CollisionUtils.checkRectCollision(this.player, this.exitDoor)) {
-                this.roomComplete();
+            if (this.player.y > GAME_CONFIG.CANVAS_HEIGHT + 100) {
+                this.game.data.takeDamage();
+                if (this.game.data.getHealth() > 0) {
+                    this.player.x = GAME_CONFIG.CANVAS_WIDTH / 2 - 20;
+                    this.player.y = GAME_CONFIG.CANVAS_HEIGHT - 200;
+                    this.player.vx = 0;
+                    this.player.vy = 0;
+                }
             }
         }
         
@@ -242,7 +250,7 @@ class JumpRoom extends BaseRoomPlugin {
         }
     }
     
-    handleFall() {
+    handleHitTop() {
         this.game.data.takeDamage();
         
         if (this.game.data.getHealth() <= 0) {
@@ -251,44 +259,37 @@ class JumpRoom extends BaseRoomPlugin {
         
         this.isRespawning = true;
         
-        let respawnPlatform;
-        if (this.respawnPlatformIndex >= 0 && this.respawnPlatformIndex < this.platforms.length) {
-            respawnPlatform = this.platforms[this.respawnPlatformIndex];
-        }
-        
-        if (!respawnPlatform && this.platforms.length > 0) {
-            respawnPlatform = this.platforms.reduce((best, p) => {
-                const pScreenY = p.y - this.cameraY;
-                if (pScreenY > 0 && pScreenY < GAME_CONFIG.CANVAS_HEIGHT) {
-                    if (!best || pScreenY > (best.y - this.cameraY)) {
-                        return p;
-                    }
-                }
-                return best;
-            }, null);
-        }
-        
-        if (!respawnPlatform && this.platforms.length > 0) {
-            respawnPlatform = this.platforms[this.platforms.length - 1];
-        }
-        
-        if (!respawnPlatform) {
-            respawnPlatform = {
-                x: GAME_CONFIG.CANVAS_WIDTH / 2 - 60,
-                y: this.cameraY + GAME_CONFIG.CANVAS_HEIGHT - 30,
-                width: 120,
-                height: 15
-            };
-        }
+        let respawnTarget = this.respawnPlatform || this.startPlatform;
         
         setTimeout(() => {
-            this.player.x = respawnPlatform.x + respawnPlatform.width / 2 - this.player.width / 2;
-            this.player.y = respawnPlatform.y - this.player.height;
+            this.player.x = respawnTarget.x + respawnTarget.width / 2 - this.player.width / 2;
+            this.player.y = respawnTarget.y - this.player.height;
             this.player.vx = 0;
             this.player.vy = 0;
             this.player.onGround = true;
             this.player.isJumping = false;
-            this.respawnPlatformIndex = -1;
+            this.isRespawning = false;
+        }, 500);
+    }
+    
+    handleFallOff() {
+        this.game.data.takeDamage();
+        
+        if (this.game.data.getHealth() <= 0) {
+            return;
+        }
+        
+        this.isRespawning = true;
+        
+        let respawnTarget = this.respawnPlatform || this.startPlatform;
+        
+        setTimeout(() => {
+            this.player.x = respawnTarget.x + respawnTarget.width / 2 - this.player.width / 2;
+            this.player.y = respawnTarget.y - this.player.height;
+            this.player.vx = 0;
+            this.player.vy = 0;
+            this.player.onGround = true;
+            this.player.isJumping = false;
             this.isRespawning = false;
         }, 500);
     }
@@ -297,31 +298,24 @@ class JumpRoom extends BaseRoomPlugin {
         ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
         
-        ctx.save();
-        if (!this.appleCollected) {
-            ctx.translate(0, this.cameraY);
-        }
-        
-        if (!this.appleCollected) {
-            const gridY = Math.floor(this.cameraY / 50) * 50;
-            ctx.strokeStyle = 'rgba(100, 100, 150, 0.1)';
-            ctx.lineWidth = 1;
-            
-            for (let y = gridY - 50; y < GAME_CONFIG.CANVAS_HEIGHT + this.cameraY + 100; y += 50) {
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(GAME_CONFIG.CANVAS_WIDTH, y);
-                ctx.stroke();
-            }
-        }
-        
         if (this.appleCollected) {
             for (const platform of this.safePlatforms) {
                 this.renderPlatform(ctx, platform, true);
             }
         } else {
+            const gridY = Math.floor(this.scrollSpeed * 10 / 50) * 50;
+            ctx.strokeStyle = 'rgba(100, 100, 150, 0.1)';
+            ctx.lineWidth = 1;
+            
+            for (let y = gridY - 50; y < GAME_CONFIG.CANVAS_HEIGHT + 100; y += 50) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(GAME_CONFIG.CANVAS_WIDTH, y);
+                ctx.stroke();
+            }
+            
             for (const platform of this.platforms) {
-                this.renderPlatform(ctx, platform, platform.isTop);
+                this.renderPlatform(ctx, platform, platform.isStart || platform.isBottom);
             }
         }
         
@@ -329,15 +323,9 @@ class JumpRoom extends BaseRoomPlugin {
             this.renderApple(ctx);
         }
         
-        if (this.exitDoor) {
-            this.renderExitDoor(ctx);
-        }
-        
         if (this.shouldRenderPlayer() && !this.isRespawning) {
             this.renderPlayer(ctx);
         }
-        
-        ctx.restore();
         
         this.renderHUD(ctx);
     }
@@ -368,7 +356,6 @@ class JumpRoom extends BaseRoomPlugin {
     renderPlayer(ctx) {
         const x = this.player.x;
         const y = this.player.y;
-        const segmentSize = 10;
         
         const springSegments = [
             { x: x + 15, y: y, w: 10, h: 10, isHead: true },
@@ -394,21 +381,21 @@ class JumpRoom extends BaseRoomPlugin {
             }
         });
         
-        if (this.player.vy < 0) {
+        if (this.player.vy > 0) {
             ctx.fillStyle = '#ff6b6b';
-            const flameHeight = Math.min(Math.abs(this.player.vy) * 0.8, 15);
+            const flameHeight = Math.min(Math.abs(this.player.vy) * 0.5, 10);
             
             ctx.beginPath();
-            ctx.moveTo(x + 10, y + this.player.height);
-            ctx.lineTo(x + 15, y + this.player.height + flameHeight + Math.random() * 5);
-            ctx.lineTo(x + 20, y + this.player.height);
+            ctx.moveTo(x + 10, y);
+            ctx.lineTo(x + 15, y - flameHeight - Math.random() * 3);
+            ctx.lineTo(x + 20, y);
             ctx.closePath();
             ctx.fill();
             
             ctx.beginPath();
-            ctx.moveTo(x + 20, y + this.player.height);
-            ctx.lineTo(x + 25, y + this.player.height + flameHeight * 0.7 + Math.random() * 5);
-            ctx.lineTo(x + 30, y + this.player.height);
+            ctx.moveTo(x + 20, y);
+            ctx.lineTo(x + 25, y - flameHeight * 0.7 - Math.random() * 3);
+            ctx.lineTo(x + 30, y);
             ctx.closePath();
             ctx.fill();
         }
@@ -418,23 +405,19 @@ class JumpRoom extends BaseRoomPlugin {
         RenderUtils.drawGlowingApple(ctx, this.apple.x, this.apple.y, this.apple.width, this.apple.height, this.apple.glow, true);
     }
     
-    renderExitDoor(ctx) {
-        RenderUtils.drawExitDoor(ctx, this.exitDoor.x, this.exitDoor.y, this.exitDoor.width, this.exitDoor.height, 'EXIT');
-    }
-    
     renderHUD(ctx) {
         ctx.fillStyle = '#fff';
         ctx.font = '16px Courier New';
         
         if (!this.appleCollected) {
-            const heightMeters = Math.floor(this.maxHeight / 10);
-            ctx.fillText(`高度: ${heightMeters}m`, GAME_CONFIG.CANVAS_WIDTH / 2 - 40, 30);
-            ctx.fillText('跳上平台向上攀登！', GAME_CONFIG.CANVAS_WIDTH / 2 - 70, 55);
-        } else if (this.exitDoor) {
+            const remaining = Math.max(0, this.totalPlatformsNeeded - this.platformsPassed);
+            ctx.fillText(`剩余层数: ${remaining}`, GAME_CONFIG.CANVAS_WIDTH / 2 - 50, 30);
+            ctx.fillText('控制蛇向下移动踩平台！', GAME_CONFIG.CANVAS_WIDTH / 2 - 80, 55);
+        } else {
             ctx.fillStyle = '#06d6a0';
-            ctx.fillText('找到出口离开房间！', GAME_CONFIG.CANVAS_WIDTH / 2 - 70, 30);
+            ctx.fillText('收集金苹果！', GAME_CONFIG.CANVAS_WIDTH / 2 - 50, 30);
         }
     }
 }
 
-window.JumpRoom = JumpRoom;
+window.FallRoom = FallRoom;

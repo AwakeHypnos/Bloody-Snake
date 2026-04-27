@@ -36,6 +36,7 @@ class Game {
         this.pluginManager.register(ROOM_TYPES.SHOOTER, ShooterRoom);
         this.pluginManager.register(ROOM_TYPES.SPACESHIP, SpaceshipRoom);
         this.pluginManager.register(ROOM_TYPES.JUMP, JumpRoom);
+        this.pluginManager.register(ROOM_TYPES.FALL, FallRoom);
     }
     
     setupEventListeners() {

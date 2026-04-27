@@ -12,7 +12,8 @@ const ROOM_TYPES = {
     SNAKE: 'snake',
     SHOOTER: 'shooter',
     SPACESHIP: 'spaceship',
-    JUMP: 'jump'
+    JUMP: 'jump',
+    FALL: 'fall'
 };
 
 const GAME_STATES = {
@@ -28,7 +29,8 @@ const ROOM_DISPLAY_NAMES = {
     [ROOM_TYPES.SNAKE]: '🐍 贪吃蛇房间',
     [ROOM_TYPES.SHOOTER]: '🔫 横版射击房间',
     [ROOM_TYPES.SPACESHIP]: '🚀 宇宙飞船房间',
-    [ROOM_TYPES.JUMP]: '🦘 跳跃房间'
+    [ROOM_TYPES.JUMP]: '🦘 跳跃房间',
+    [ROOM_TYPES.FALL]: '⬇️ 下落房间'
 };
 
 const TRANSITION_TEXTS = [
