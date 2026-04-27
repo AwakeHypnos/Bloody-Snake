@@ -13,6 +13,7 @@ const ROOM_TYPES = {
 const GAME_STATES = {
     MENU: 'menu',
     PLAYING: 'playing',
+    PAUSED: 'paused',
     TRANSITION: 'transition',
     GAME_OVER: 'gameover',
     VICTORY: 'victory'
@@ -34,6 +35,7 @@ class Game {
         this.lastTime = 0;
         this.invincibleTime = 0;
         this.invincibleDuration = 1500;
+        this.animationFrameId = null;
         
         this.setupEventListeners();
         this.updateHearts();
@@ -45,6 +47,9 @@ class Game {
             if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
                 e.preventDefault();
             }
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                this.togglePause();
+            }
         });
         
         document.addEventListener('keyup', (e) => {
@@ -54,17 +59,30 @@ class Game {
         document.getElementById('start-btn').addEventListener('click', () => this.startGame());
         document.getElementById('restart-btn').addEventListener('click', () => this.startGame());
         document.getElementById('play-again-btn').addEventListener('click', () => this.startGame());
+        document.getElementById('load-menu-btn').addEventListener('click', () => this.loadGame());
+        
+        document.getElementById('resume-btn').addEventListener('click', () => this.resumeGame());
+        document.getElementById('save-btn').addEventListener('click', () => this.saveGame());
+        document.getElementById('load-btn').addEventListener('click', () => this.loadGame());
+        document.getElementById('quit-btn').addEventListener('click', () => this.quitToMenu());
     }
     
     startGame() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        
         this.health = INITIAL_HEALTH;
         this.roomsCompleted = 0;
+        this.lastTime = 0;
         this.updateHearts();
         this.updateRoomInfo();
         
         document.getElementById('start-screen').classList.add('hidden');
         document.getElementById('game-over-screen').classList.add('hidden');
         document.getElementById('victory-screen').classList.add('hidden');
+        document.getElementById('pause-screen').classList.add('hidden');
         
         this.nextRoom();
         this.gameLoop();
@@ -161,17 +179,127 @@ class Game {
     
     gameOver() {
         this.state = GAME_STATES.GAME_OVER;
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
         document.getElementById('game-over-message').textContent = `你在第 ${this.roomsCompleted + 1} 个房间阵亡了！`;
         document.getElementById('game-over-screen').classList.remove('hidden');
     }
     
     victory() {
         this.state = GAME_STATES.VICTORY;
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
         document.getElementById('victory-screen').classList.remove('hidden');
     }
     
+    pauseGame() {
+        if (this.state === GAME_STATES.PLAYING) {
+            this.state = GAME_STATES.PAUSED;
+            document.getElementById('pause-screen').classList.remove('hidden');
+        }
+    }
+    
+    resumeGame() {
+        if (this.state === GAME_STATES.PAUSED) {
+            this.state = GAME_STATES.PLAYING;
+            document.getElementById('pause-screen').classList.add('hidden');
+            this.lastTime = performance.now();
+        }
+    }
+    
+    togglePause() {
+        if (this.state === GAME_STATES.PLAYING) {
+            this.pauseGame();
+        } else if (this.state === GAME_STATES.PAUSED) {
+            this.resumeGame();
+        }
+    }
+    
+    saveGame() {
+        const saveData = {
+            health: this.health,
+            roomsCompleted: this.roomsCompleted,
+            savedAt: Date.now()
+        };
+        localStorage.setItem('bloodySnakeSave', JSON.stringify(saveData));
+        this.showSaveMessage('游戏已保存！');
+    }
+    
+    loadGame() {
+        const saveDataStr = localStorage.getItem('bloodySnakeSave');
+        if (!saveDataStr) {
+            this.showSaveMessage('没有找到存档！');
+            return;
+        }
+        
+        try {
+            const saveData = JSON.parse(saveDataStr);
+            
+            if (this.animationFrameId) {
+                cancelAnimationFrame(this.animationFrameId);
+                this.animationFrameId = null;
+            }
+            
+            this.health = saveData.health;
+            this.roomsCompleted = saveData.roomsCompleted;
+            this.lastTime = 0;
+            this.currentRoom = null;
+            this.invincibleTime = 0;
+            
+            this.updateHearts();
+            this.updateRoomInfo();
+            
+            document.getElementById('pause-screen').classList.add('hidden');
+            document.getElementById('start-screen').classList.add('hidden');
+            document.getElementById('game-over-screen').classList.add('hidden');
+            document.getElementById('victory-screen').classList.add('hidden');
+            
+            this.nextRoom();
+            this.gameLoop();
+            
+            this.showSaveMessage('游戏已读取！');
+        } catch (e) {
+            this.showSaveMessage('存档读取失败！');
+            console.error(e);
+        }
+    }
+    
+    hasSaveData() {
+        return localStorage.getItem('bloodySnakeSave') !== null;
+    }
+    
+    showSaveMessage(message) {
+        const msgEl = document.getElementById('save-message');
+        if (msgEl) {
+            msgEl.textContent = message;
+            msgEl.classList.remove('hidden');
+            setTimeout(() => {
+                msgEl.classList.add('hidden');
+            }, 2000);
+        }
+    }
+    
+    quitToMenu() {
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+        
+        this.state = GAME_STATES.MENU;
+        this.currentRoom = null;
+        
+        document.getElementById('pause-screen').classList.add('hidden');
+        document.getElementById('game-over-screen').classList.add('hidden');
+        document.getElementById('victory-screen').classList.add('hidden');
+        document.getElementById('start-screen').classList.remove('hidden');
+    }
+    
     gameLoop(currentTime = 0) {
-        requestAnimationFrame((time) => this.gameLoop(time));
+        this.animationFrameId = requestAnimationFrame((time) => this.gameLoop(time));
         
         if (this.state !== GAME_STATES.PLAYING) {
             return;
@@ -220,6 +348,7 @@ class SnakeRoom {
         
         this.doors = [];
         this.doorsOpen = false;
+        this.doorsSpawned = false;
         
         this.flashTimer = 0;
         this.flashInterval = 200;
@@ -326,9 +455,12 @@ class SnakeRoom {
         }
         
         if (this.roomApple && head.x === this.roomApple.x && head.y === this.roomApple.y) {
+            this.roomApple = null;
             this.doorsOpen = true;
-            this.spawnDoors();
-            return;
+            if (!this.doorsSpawned) {
+                this.spawnDoors();
+                this.doorsSpawned = true;
+            }
         }
         
         this.snake.unshift(head);
