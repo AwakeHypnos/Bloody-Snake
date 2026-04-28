@@ -66,7 +66,7 @@ class SpaceshipRoom extends BaseRoomPlugin {
                 speed: 1.5,
                 type: 'ufo',
                 shootTimer: 0,
-                shootCooldown: 2000
+                shootCooldown: 3500
             });
         } else {
             this.enemies.push({
@@ -78,7 +78,7 @@ class SpaceshipRoom extends BaseRoomPlugin {
                 speed: 1,
                 type: 'plane',
                 shootTimer: 0,
-                shootCooldown: 1500
+                shootCooldown: 2800
             });
         }
     }
@@ -93,7 +93,7 @@ class SpaceshipRoom extends BaseRoomPlugin {
             maxHealth: 50,
             moveDirection: 1,
             shootTimer: 0,
-            shootCooldown: 1000,
+            shootCooldown: 1800,
             patternTimer: 0,
             pattern: 0,
             beamTimer: 0
