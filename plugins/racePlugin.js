@@ -43,7 +43,7 @@ class RaceRoom extends BaseRoomPlugin {
         this.spawnInterval = 800;
         
         this.progress = 0;
-        this.targetProgress = 100;
+        this.targetProgress = 400;
         this.isFinished = false;
         
         this.doors = [];

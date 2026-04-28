@@ -48,6 +48,9 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         
         this.chamberRevealed = false;
         this.revealedResult = null;
+        this.revealForUser = null;
+        
+        this.maxItems = 3;
         
         this.message = '';
         this.messageTimer = 0;
@@ -80,8 +83,8 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         
         this.currentChamber = Math.floor(Math.random() * REVOLVER_CHAMBER_SIZE);
         
-        this.playerItems = this.drawItems(2);
-        this.aiItems = this.drawItems(2);
+        this.playerItems = this.drawItems(Math.min(2, this.maxItems));
+        this.aiItems = this.drawItems(Math.min(2, this.maxItems));
         
         this.phase = 'player_turn';
         this.turn = 'player';
@@ -204,12 +207,14 @@ class RussianRouletteRoom extends BaseRoomPlugin {
     revealChamber(user) {
         this.chamberRevealed = true;
         this.revealedResult = this.chamber[this.currentChamber];
+        this.revealForUser = user;
         if (user === 'player') {
             this.showMessage(this.revealedResult ? '当前弹仓有子弹！' : '当前弹仓是空的！');
         }
         setTimeout(() => {
             this.chamberRevealed = false;
             this.revealedResult = null;
+            this.revealForUser = null;
         }, 2000);
     }
     
@@ -288,9 +293,21 @@ class RussianRouletteRoom extends BaseRoomPlugin {
             this.phase = 'player_turn';
             
             if (this.round > 1) {
-                const newItem = this.drawItems(1)[0];
-                this.playerItems.push(newItem);
-                this.showMessage('新回合开始，你获得了一个新道具！');
+                const playerAvailable = this.playerItems.filter(i => !i.used).length;
+                const aiAvailable = this.aiItems.filter(i => !i.used).length;
+                
+                if (playerAvailable < this.maxItems) {
+                    const newItem = this.drawItems(1)[0];
+                    this.playerItems.push(newItem);
+                    this.showMessage('新回合开始，你获得了一个新道具！');
+                } else {
+                    this.showMessage('新回合开始，道具已满无法获得新道具');
+                }
+                
+                if (aiAvailable < this.maxItems) {
+                    const newItem = this.drawItems(1)[0];
+                    this.aiItems.push(newItem);
+                }
             }
             this.round++;
         }
@@ -439,9 +456,8 @@ class RussianRouletteRoom extends BaseRoomPlugin {
             const y = Math.sin(angle) * chamberOffset;
             
             const isCurrent = i === this.currentChamber;
-            const hasBullet = this.chamber[i];
             
-            ctx.fillStyle = hasBullet ? '#ff6b6b' : '#666';
+            ctx.fillStyle = '#555';
             ctx.beginPath();
             ctx.arc(x, y, chamberRadius, 0, Math.PI * 2);
             ctx.fill();
@@ -459,7 +475,12 @@ class RussianRouletteRoom extends BaseRoomPlugin {
                 ctx.globalAlpha = 1.0;
             }
             
-            if (this.chamberRevealed && isCurrent) {
+            if (this.chamberRevealed && isCurrent && this.revealForUser === 'player') {
+                ctx.fillStyle = this.revealedResult ? '#ff6b6b' : '#666';
+                ctx.beginPath();
+                ctx.arc(x, y, chamberRadius - 3, 0, Math.PI * 2);
+                ctx.fill();
+                
                 ctx.fillStyle = '#fff';
                 ctx.font = 'bold 14px Arial';
                 ctx.textAlign = 'center';
