@@ -37,6 +37,7 @@ class Game {
         this.pluginManager.register(ROOM_TYPES.SPACESHIP, SpaceshipRoom);
         this.pluginManager.register(ROOM_TYPES.JUMP, JumpRoom);
         this.pluginManager.register(ROOM_TYPES.FALL, FallRoom);
+        this.pluginManager.register(ROOM_TYPES.RUSSIAN_ROULETTE, RussianRouletteRoom);
     }
     
     setupEventListeners() {
@@ -95,8 +96,18 @@ class Game {
         
         setTimeout(() => {
             const availableTypes = this.pluginManager.getAvailableTypes();
-            const randomIndex = Math.floor(Math.random() * availableTypes.length);
-            this.currentRoomType = availableTypes[randomIndex];
+            let selectedType;
+            
+            if (this.currentRoomType && availableTypes.length > 1) {
+                const filteredTypes = availableTypes.filter(type => type !== this.currentRoomType);
+                const randomIndex = Math.floor(Math.random() * filteredTypes.length);
+                selectedType = filteredTypes[randomIndex];
+            } else {
+                const randomIndex = Math.floor(Math.random() * availableTypes.length);
+                selectedType = availableTypes[randomIndex];
+            }
+            
+            this.currentRoomType = selectedType;
             
             this.hideTransition();
             

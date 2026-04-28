@@ -1,3 +1,9 @@
+const POWERUP_TYPES = {
+    EXTRA_BULLETS: 'extra_bullets',
+    SHIELD: 'shield',
+    HEAL: 'heal'
+};
+
 class SpaceshipRoom extends BaseRoomPlugin {
     constructor(game) {
         super(game);
@@ -10,7 +16,10 @@ class SpaceshipRoom extends BaseRoomPlugin {
             height: 60,
             speed: 5,
             shootTimer: 0,
-            shootCooldown: 250
+            shootCooldown: 250,
+            extraBullets: 0,
+            extraBulletsTimer: 0,
+            shield: 0
         };
         
         this.bullets = [];
@@ -18,6 +27,8 @@ class SpaceshipRoom extends BaseRoomPlugin {
         this.enemies = [];
         this.boss = null;
         this.bossDefeated = false;
+        
+        this.powerups = [];
         
         this.apple = null;
         this.appleCollected = false;
@@ -147,6 +158,7 @@ class SpaceshipRoom extends BaseRoomPlugin {
         }
         
         this.updateBullets(deltaTime);
+        this.updatePowerups(deltaTime);
         
         if (!this.bossDefeated) {
             if (!this.boss) {
@@ -198,13 +210,33 @@ class SpaceshipRoom extends BaseRoomPlugin {
     }
     
     shoot() {
+        const centerX = this.player.x + this.player.width / 2;
+        
         this.bullets.push({
-            x: this.player.x + this.player.width / 2 - 4,
+            x: centerX - 4,
             y: this.player.y - 10,
             width: 8,
             height: 20,
             speed: 12
         });
+        
+        if (this.player.extraBullets > 0) {
+            this.bullets.push({
+                x: this.player.x - 8,
+                y: this.player.y + 5,
+                width: 8,
+                height: 20,
+                speed: 12
+            });
+            this.bullets.push({
+                x: this.player.x + this.player.width,
+                y: this.player.y + 5,
+                width: 8,
+                height: 20,
+                speed: 12
+            });
+            this.player.extraBullets--;
+        }
     }
     
     updateBullets(deltaTime) {
@@ -334,6 +366,58 @@ class SpaceshipRoom extends BaseRoomPlugin {
         }
     }
     
+    spawnPowerup(x, y) {
+        if (Math.random() > 0.5) {
+            return;
+        }
+        
+        const types = [POWERUP_TYPES.EXTRA_BULLETS, POWERUP_TYPES.SHIELD, POWERUP_TYPES.HEAL];
+        const randomType = types[Math.floor(Math.random() * types.length)];
+        
+        this.powerups.push({
+            x: x,
+            y: y,
+            width: 30,
+            height: 30,
+            type: randomType,
+            speed: 1,
+            glow: 0
+        });
+    }
+    
+    updatePowerups(deltaTime) {
+        this.powerups = this.powerups.filter(powerup => {
+            powerup.y += powerup.speed;
+            powerup.glow = (powerup.glow + deltaTime / 200) % (Math.PI * 2);
+            
+            if (CollisionUtils.checkRectCollision(this.player, powerup)) {
+                this.applyPowerup(powerup.type);
+                return false;
+            }
+            
+            return powerup.y < GAME_CONFIG.CANVAS_HEIGHT + 50;
+        });
+    }
+    
+    applyPowerup(type) {
+        switch(type) {
+            case POWERUP_TYPES.EXTRA_BULLETS:
+                this.player.extraBullets += 10;
+                this.addComicBubble('+10子弹!', this.player.x, this.player.y - 30);
+                break;
+            case POWERUP_TYPES.SHIELD:
+                this.player.shield++;
+                this.addComicBubble('护盾!', this.player.x, this.player.y - 30);
+                break;
+            case POWERUP_TYPES.HEAL:
+                if (this.game.data.getHealth() < GAME_CONFIG.INITIAL_HEALTH) {
+                    this.game.data.setHealth(this.game.data.getHealth() + 1);
+                    this.addComicBubble('+1生命!', this.player.x, this.player.y - 30);
+                }
+                break;
+        }
+    }
+    
     checkCollisions() {
         this.bullets.forEach((bullet, bulletIndex) => {
             this.enemies.forEach((enemy, enemyIndex) => {
@@ -341,6 +425,7 @@ class SpaceshipRoom extends BaseRoomPlugin {
                     enemy.health--;
                     this.bullets.splice(bulletIndex, 1);
                     if (enemy.health <= 0) {
+                        this.spawnPowerup(enemy.x, enemy.y);
                         this.enemies.splice(enemyIndex, 1);
                         this.addComicBubble('POW!', enemy.x, enemy.y);
                     }
@@ -362,7 +447,12 @@ class SpaceshipRoom extends BaseRoomPlugin {
         this.enemyBullets.forEach((bullet, index) => {
             if (CollisionUtils.checkRectCollision(bullet, this.player)) {
                 this.enemyBullets.splice(index, 1);
-                this.game.data.takeDamage();
+                if (this.player.shield > 0) {
+                    this.player.shield--;
+                    this.addComicBubble('护盾抵消!', this.player.x, this.player.y - 30);
+                } else {
+                    this.game.data.takeDamage();
+                }
             }
         });
     }
@@ -424,6 +514,10 @@ class SpaceshipRoom extends BaseRoomPlugin {
             ctx.strokeRect(bullet.x, bullet.y, bullet.width, bullet.height);
         });
         
+        this.powerups.forEach(powerup => {
+            this.renderPowerup(ctx, powerup);
+        });
+        
         if (this.shouldRenderPlayer()) {
             this.renderPlayer(ctx);
         }
@@ -469,6 +563,21 @@ class SpaceshipRoom extends BaseRoomPlugin {
         const h = this.player.height;
         const segmentSize = 8;
         
+        if (this.player.shield > 0) {
+            ctx.save();
+            ctx.globalAlpha = 0.4;
+            ctx.fillStyle = '#4cc9f0';
+            ctx.beginPath();
+            ctx.arc(x + w / 2, y + h / 2, w / 2 + 10, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.globalAlpha = 0.6;
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+            ctx.restore();
+        }
+        
         const snakeSegments = [
             { x: x + w / 2 - segmentSize / 2, y: y, w: segmentSize, h: segmentSize, isHead: true },
             { x: x + w / 2 - segmentSize / 2, y: y + segmentSize, w: segmentSize, h: segmentSize, isHead: false },
@@ -513,6 +622,56 @@ class SpaceshipRoom extends BaseRoomPlugin {
         ctx.lineTo(x + w / 2 + segmentSize * 1.5, y + h);
         ctx.closePath();
         ctx.fill();
+    }
+    
+    renderPowerup(ctx, powerup) {
+        const x = powerup.x;
+        const y = powerup.y;
+        const w = powerup.width;
+        const h = powerup.height;
+        const glowRadius = Math.sin(powerup.glow) * 5 + 5;
+        
+        ctx.save();
+        
+        let glowColor, mainColor, icon;
+        switch(powerup.type) {
+            case POWERUP_TYPES.EXTRA_BULLETS:
+                glowColor = 'rgba(255, 200, 0, 0.3)';
+                mainColor = '#ffd700';
+                icon = '⚡';
+                break;
+            case POWERUP_TYPES.SHIELD:
+                glowColor = 'rgba(76, 201, 240, 0.4)';
+                mainColor = '#4cc9f0';
+                icon = '🛡️';
+                break;
+            case POWERUP_TYPES.HEAL:
+                glowColor = 'rgba(6, 214, 160, 0.4)';
+                mainColor = '#06d6a0';
+                icon = '❤️';
+                break;
+        }
+        
+        ctx.beginPath();
+        ctx.arc(x + w / 2, y + h / 2, w / 2 + glowRadius, 0, Math.PI * 2);
+        ctx.fillStyle = glowColor;
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.arc(x + w / 2, y + h / 2, w / 2, 0, Math.PI * 2);
+        ctx.fillStyle = mainColor;
+        ctx.fill();
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(icon, x + w / 2, y + h / 2);
+        
+        ctx.restore();
     }
     
     renderEnemy(ctx, enemy) {
@@ -683,6 +842,19 @@ class SpaceshipRoom extends BaseRoomPlugin {
             ctx.fillStyle = '#06d6a0';
             ctx.font = '16px Courier New';
             ctx.fillText('向上进入出口！', GAME_CONFIG.CANVAS_WIDTH / 2 - 60, 30);
+        }
+        
+        let hudY = 55;
+        if (this.player.extraBullets > 0) {
+            ctx.fillStyle = '#ffd700';
+            ctx.font = '14px Courier New';
+            ctx.fillText(`⚡ 额外子弹: ${this.player.extraBullets}`, 20, hudY);
+            hudY += 20;
+        }
+        if (this.player.shield > 0) {
+            ctx.fillStyle = '#4cc9f0';
+            ctx.font = '14px Courier New';
+            ctx.fillText(`🛡️ 护盾: ${this.player.shield}`, 20, hudY);
         }
     }
 }
