@@ -14,7 +14,8 @@ const ROOM_TYPES = {
     SPACESHIP: 'spaceship',
     JUMP: 'jump',
     FALL: 'fall',
-    RUSSIAN_ROULETTE: 'russian_roulette'
+    RUSSIAN_ROULETTE: 'russian_roulette',
+    RACE: 'race'
 };
 
 const GAME_STATES = {
@@ -32,7 +33,8 @@ const ROOM_DISPLAY_NAMES = {
     [ROOM_TYPES.SPACESHIP]: '🚀 宇宙飞船房间',
     [ROOM_TYPES.JUMP]: '🦘 跳跃房间',
     [ROOM_TYPES.FALL]: '⬇️ 下落房间',
-    [ROOM_TYPES.RUSSIAN_ROULETTE]: '🎰 俄罗斯轮盘赌房间'
+    [ROOM_TYPES.RUSSIAN_ROULETTE]: '🎰 俄罗斯轮盘赌房间',
+    [ROOM_TYPES.RACE]: '🏎️ 赛蛇房间'
 };
 
 const TRANSITION_TEXTS = [
