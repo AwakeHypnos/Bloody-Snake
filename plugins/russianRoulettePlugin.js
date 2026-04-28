@@ -75,7 +75,22 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         this.exitDoor = null;
         this.roomCompleted = false;
         
+        this.actionLog = [];
+        this.maxLogEntries = 15;
+        
         this.initializeGame();
+    }
+    
+    addLogEntry(type, text) {
+        this.actionLog.push({
+            type: type,
+            text: text,
+            timestamp: Date.now()
+        });
+        
+        if (this.actionLog.length > this.maxLogEntries) {
+            this.actionLog.shift();
+        }
     }
     
     initializeGame() {
@@ -156,30 +171,38 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         if (item.used) return;
         item.used = true;
         
+        const userName = user === 'player' ? '你' : 'AI';
+        
         switch(item.type) {
             case ROULETTE_ITEM_TYPES.BULLET_BELT:
                 this.addBullet();
-                this.showMessage(`${user === 'player' ? '你' : 'AI'}使用了子弹带，添加1发子弹`);
+                this.showMessage(`${userName}使用了子弹带，添加1发子弹`);
+                this.addLogEntry('item', `${userName}使用了【子弹带】`);
                 break;
                 
             case ROULETTE_ITEM_TYPES.IRON_CONE:
+                const hadBullet = this.chamber[this.currentChamber];
                 this.removeBullet();
-                this.showMessage(`${user === 'player' ? '你' : 'AI'}使用了铁锥，退出1发子弹`);
+                this.showMessage(`${userName}使用了铁锥，退出1发子弹`);
+                this.addLogEntry('item', `${userName}使用了【铁锥】${hadBullet ? '，退掉了1发子弹' : '，但当前位置没有子弹'}`);
                 break;
                 
             case ROULETTE_ITEM_TYPES.MAGNIFYING_GLASS:
                 this.revealChamber(user);
-                this.showMessage(`${user === 'player' ? '你' : 'AI'}使用了放大镜查看弹仓`);
+                this.showMessage(`${userName}使用了放大镜查看弹仓`);
+                this.addLogEntry('item', `${userName}使用了【放大镜】`);
                 break;
                 
             case ROULETTE_ITEM_TYPES.GUNPOWDER_FLASK:
                 this.gunpowderActive[user] = true;
-                this.showMessage(`${user === 'player' ? '你' : 'AI'}使用了火药壶，下次伤害+1`);
+                this.showMessage(`${userName}使用了火药壶，下次伤害+1`);
+                this.addLogEntry('item', `${userName}使用了【火药壶】`);
                 break;
                 
             case ROULETTE_ITEM_TYPES.WATER_BASIN:
                 this.waterBasinActive[user] = true;
-                this.showMessage(`${user === 'player' ? '你' : 'AI'}使用了水盆，下次50%概率哑火`);
+                this.showMessage(`${userName}使用了水盆，如果当前有子弹则20%概率哑火`);
+                this.addLogEntry('item', `${userName}使用了【水盆】`);
                 break;
         }
     }
@@ -200,16 +223,8 @@ class RussianRouletteRoom extends BaseRoomPlugin {
     }
     
     removeBullet() {
-        const loadedChambers = [];
-        for (let i = 0; i < REVOLVER_CHAMBER_SIZE; i++) {
-            if (this.chamber[i]) {
-                loadedChambers.push(i);
-            }
-        }
-        
-        if (loadedChambers.length > 0) {
-            const pos = loadedChambers[Math.floor(Math.random() * loadedChambers.length)];
-            this.chamber[pos] = false;
+        if (this.chamber[this.currentChamber]) {
+            this.chamber[this.currentChamber] = false;
             this.totalBullets--;
         }
     }
@@ -232,13 +247,16 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         if (this.phase !== 'player_turn' && this.phase !== 'ai_turn') return;
         
         const user = this.turn;
+        const userName = user === 'player' ? '你' : 'AI';
         
         let misfired = false;
         if (this.waterBasinActive[user]) {
             this.waterBasinActive[user] = false;
-            if (Math.random() < 0.5) {
+            const hasBullet = this.chamber[this.currentChamber];
+            if (hasBullet && Math.random() < 0.2) {
                 misfired = true;
-                this.showMessage(`${user === 'player' ? '你' : 'AI'}的枪哑火了！`);
+                this.showMessage(`${userName}的枪哑火了！`);
+                this.addLogEntry('shoot', `${userName}开枪了，但枪哑火了！`);
                 this.advanceChamber();
                 this.endTurn();
                 return;
@@ -265,14 +283,17 @@ class RussianRouletteRoom extends BaseRoomPlugin {
                     this.playerHealth = Math.max(0, this.playerHealth - damage);
                     this.game.data.setHealth(this.playerHealth);
                     this.showMessage(`砰！你中枪了，受到${damage}点伤害！`);
+                    this.addLogEntry('shoot', `${userName}开枪了！砰！${userName}中枪了，受到${damage}点伤害！`);
                 } else {
                     this.aiHealth = Math.max(0, this.aiHealth - damage);
                     this.showMessage(`砰！AI中枪了，受到${damage}点伤害！`);
+                    this.addLogEntry('shoot', `${userName}开枪了！砰！${userName}中枪了，受到${damage}点伤害！`);
                 }
                 
                 this.animationPhase = 'hit';
             } else {
                 this.showMessage('咔哒！空枪！');
+                this.addLogEntry('shoot', `${userName}开枪了！咔哒！空枪！`);
                 this.animationPhase = 'miss';
             }
             
@@ -371,6 +392,7 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         this.reloadAnimation = true;
         this.reloadTimer = 0;
         this.showMessage(`弹仓已空！重新填入 ${this.reloadBullets} 发子弹...`);
+        this.addLogEntry('system', `┄┄┄ 弹仓已空，重新填弹 ┄┄┄`);
     }
     
     finishReload() {
@@ -389,6 +411,7 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         this.currentChamber = Math.floor(Math.random() * REVOLVER_CHAMBER_SIZE);
         
         this.startSpinAnimation();
+        this.addLogEntry('system', `填入了 ${this.reloadBullets} 发子弹`);
     }
     
     startSpinAnimation() {
@@ -475,10 +498,88 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         this.renderStatus(ctx);
         this.renderItems(ctx);
         this.renderMessage(ctx);
+        this.renderActionLog(ctx);
         
         if (this.exitDoor) {
             this.renderExitDoor(ctx);
         }
+    }
+    
+    renderActionLog(ctx) {
+        if (this.actionLog.length === 0) return;
+        
+        const logX = 10;
+        const logY = 100;
+        const logWidth = 220;
+        const logHeight = 350;
+        const padding = 10;
+        
+        ctx.save();
+        
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.fillRect(logX, logY, logWidth, logHeight);
+        
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(logX, logY, logWidth, logHeight);
+        
+        ctx.fillStyle = '#888';
+        ctx.font = 'bold 12px Courier New';
+        ctx.textAlign = 'left';
+        ctx.fillText('行动日志', logX + padding, logY + padding + 8);
+        
+        ctx.strokeStyle = '#444';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(logX + padding, logY + padding + 15);
+        ctx.lineTo(logX + logWidth - padding, logY + padding + 15);
+        ctx.stroke();
+        
+        const startY = logY + padding + 30;
+        const lineHeight = 16;
+        const maxLines = Math.floor((logHeight - padding - 30) / lineHeight);
+        
+        const displayLogs = this.actionLog.slice(-maxLines);
+        
+        displayLogs.forEach((log, index) => {
+            const y = startY + index * lineHeight;
+            
+            let color = '#aaa';
+            let prefix = '';
+            
+            switch(log.type) {
+                case 'item':
+                    color = '#4cc9f0';
+                    break;
+                case 'shoot':
+                    color = '#ff6b6b';
+                    if (log.text.includes('中枪')) {
+                        color = '#e94560';
+                    } else if (log.text.includes('空枪')) {
+                        color = '#666';
+                    }
+                    break;
+                case 'system':
+                    color = '#ffd700';
+                    break;
+            }
+            
+            ctx.fillStyle = color;
+            ctx.font = '11px Courier New';
+            ctx.textAlign = 'left';
+            
+            const text = log.text;
+            const maxChars = Math.floor((logWidth - padding * 2) / 7);
+            
+            if (text.length > maxChars) {
+                const truncated = text.substring(0, maxChars - 3) + '...';
+                ctx.fillText(truncated, logX + padding, y);
+            } else {
+                ctx.fillText(text, logX + padding, y);
+            }
+        });
+        
+        ctx.restore();
     }
     
     renderTable(ctx) {
@@ -573,11 +674,6 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         ctx.stroke();
         
         ctx.restore();
-        
-        ctx.fillStyle = '#fff';
-        ctx.font = '16px Courier New';
-        ctx.textAlign = 'center';
-        ctx.fillText(`子弹数: ${this.totalBullets}/${REVOLVER_CHAMBER_SIZE}`, centerX, centerY + radius + 30);
     }
     
     renderStatus(ctx) {
