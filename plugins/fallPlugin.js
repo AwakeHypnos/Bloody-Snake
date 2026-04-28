@@ -47,10 +47,15 @@ class FallRoom extends BaseRoomPlugin {
         };
         this.platforms.push(this.startPlatform);
         
-        let lastY = this.startPlatform.y + this.platformVerticalSpacing;
-        const platformCount = Math.ceil(GAME_CONFIG.CANVAS_HEIGHT / this.platformVerticalSpacing) + 3;
+        let lastY = this.startPlatform.y;
+        const platformCount = Math.ceil(GAME_CONFIG.CANVAS_HEIGHT / this.platformVerticalSpacing) + 5;
         
         for (let i = 0; i < platformCount; i++) {
+            const minSpacing = this.platformVerticalSpacing * 0.7;
+            const maxSpacing = this.platformVerticalSpacing * 1.5;
+            const randomSpacing = minSpacing + Math.random() * (maxSpacing - minSpacing);
+            lastY += randomSpacing;
+            
             const width = this.minPlatformWidth + Math.random() * (this.maxPlatformWidth - this.minPlatformWidth);
             const x = Math.random() * (GAME_CONFIG.CANVAS_WIDTH - width);
             
@@ -61,8 +66,6 @@ class FallRoom extends BaseRoomPlugin {
                 height: 15,
                 passed: false
             });
-            
-            lastY += this.platformVerticalSpacing;
         }
     }
     
@@ -173,9 +176,13 @@ class FallRoom extends BaseRoomPlugin {
             const bottomPlatform = this.platforms.reduce((max, p) => 
                 p.y > (max?.y || -Infinity) ? p : max, null);
             
-            if (bottomPlatform && bottomPlatform.y < GAME_CONFIG.CANVAS_HEIGHT + 100) {
+            if (bottomPlatform && bottomPlatform.y < GAME_CONFIG.CANVAS_HEIGHT + 50) {
+                const minSpacing = this.platformVerticalSpacing * 0.7;
+                const maxSpacing = this.platformVerticalSpacing * 1.5;
+                const randomSpacing = minSpacing + Math.random() * (maxSpacing - minSpacing);
+                
                 const newPlatform = this.generatePlatformAt(
-                    bottomPlatform.y + this.platformVerticalSpacing
+                    bottomPlatform.y + randomSpacing
                 );
                 this.platforms.push(newPlatform);
             }
