@@ -46,6 +46,20 @@ class RaceRoom extends BaseRoomPlugin {
         this.targetProgress = 400;
         this.isFinished = false;
         
+        this.finishLineY = -100;
+        this.isPastFinishLine = false;
+        
+        this.freeMoveMode = false;
+        this.snakeX = GAME_CONFIG.CANVAS_WIDTH / 2;
+        this.snakeFreeSegments = [];
+        this.snakeDirection = { x: 0, y: -1 };
+        this.snakeNextDirection = { x: 0, y: -1 };
+        this.freeMoveTimer = 0;
+        this.freeMoveInterval = 150;
+        
+        this.goldenApple = null;
+        this.goldenAppleCollected = false;
+        
         this.doors = [];
         this.doorsOpen = false;
         this.selectedDoor = 1;
@@ -111,6 +125,26 @@ class RaceRoom extends BaseRoomPlugin {
     update(deltaTime) {
         super.update(deltaTime);
         
+        if (this.freeMoveMode) {
+            this.handleFreeMoveInput();
+            this.freeMoveTimer += deltaTime;
+            
+            if (this.freeMoveTimer >= this.freeMoveInterval) {
+                this.freeMoveTimer = 0;
+                this.freeMoveSnake();
+            }
+            
+            if (this.goldenApple && !this.goldenAppleCollected) {
+                this.goldenApple.glow = (this.goldenApple.glow + deltaTime / 200) % (Math.PI * 2);
+            }
+            
+            if (this.doorsOpen) {
+                this.handleDoorInput();
+                this.doorAnimation += deltaTime / 500;
+            }
+            return;
+        }
+        
         if (this.isFinished) {
             this.handleDoorInput();
             this.doorAnimation += deltaTime / 500;
@@ -137,13 +171,17 @@ class RaceRoom extends BaseRoomPlugin {
         
         const moveAmount = this.snakeSpeed * deltaTime / 16;
         
+        const totalDistance = (this.targetProgress / 100) * (GAME_CONFIG.CANVAS_HEIGHT * 2);
+        const currentDistance = (this.progress / 100) * (GAME_CONFIG.CANVAS_HEIGHT * 2);
+        this.finishLineY = GAME_CONFIG.CANVAS_HEIGHT - 80 - (totalDistance - currentDistance);
+        
         this.trackOffset += moveAmount;
         this.progress += moveAmount / (GAME_CONFIG.CANVAS_HEIGHT * 2) * 100;
         
-        if (this.progress >= this.targetProgress) {
+        if (this.progress >= this.targetProgress && !this.isPastFinishLine) {
+            this.isPastFinishLine = true;
             this.isFinished = true;
-            this.doorsOpen = true;
-            this.spawnDoors();
+            this.enterFreeMoveMode();
             return;
         }
         
@@ -175,6 +213,104 @@ class RaceRoom extends BaseRoomPlugin {
         
         this.obstacles = this.obstacles.filter(obs => obs.y < GAME_CONFIG.CANVAS_HEIGHT + 100);
         this.powerups = this.powerups.filter(p => p.y < GAME_CONFIG.CANVAS_HEIGHT + 100 && !p.collected);
+    }
+    
+    enterFreeMoveMode() {
+        this.freeMoveMode = true;
+        
+        const headX = this.getTrackX(this.snakeTrack);
+        this.snakeX = headX;
+        
+        this.snakeFreeSegments = [];
+        for (let i = 0; i < this.snakeLength; i++) {
+            this.snakeFreeSegments.push({
+                x: headX,
+                y: GAME_CONFIG.CANVAS_HEIGHT - 80 + i * 30
+            });
+        }
+        
+        this.spawnGoldenApple();
+    }
+    
+    spawnGoldenApple() {
+        let apple;
+        const minDistance = 100;
+        
+        do {
+            apple = {
+                x: Math.random() * (GAME_CONFIG.CANVAS_WIDTH - 100) + 50,
+                y: Math.random() * (GAME_CONFIG.CANVAS_HEIGHT - 200) + 100,
+                glow: 0,
+                radius: 20
+            };
+        } while (Math.abs(apple.x - this.snakeX) < minDistance);
+        
+        this.goldenApple = apple;
+    }
+    
+    handleFreeMoveInput() {
+        if (this.game.keys['ArrowUp'] || this.game.keys['w']) {
+            if (this.snakeDirection.y !== 1) {
+                this.snakeNextDirection = { x: 0, y: -1 };
+            }
+        }
+        if (this.game.keys['ArrowDown'] || this.game.keys['s']) {
+            if (this.snakeDirection.y !== -1) {
+                this.snakeNextDirection = { x: 0, y: 1 };
+            }
+        }
+        if (this.game.keys['ArrowLeft'] || this.game.keys['a']) {
+            if (this.snakeDirection.x !== 1) {
+                this.snakeNextDirection = { x: -1, y: 0 };
+            }
+        }
+        if (this.game.keys['ArrowRight'] || this.game.keys['d']) {
+            if (this.snakeDirection.x !== -1) {
+                this.snakeNextDirection = { x: 1, y: 0 };
+            }
+        }
+    }
+    
+    freeMoveSnake() {
+        this.snakeDirection = { ...this.snakeNextDirection };
+        
+        const moveStep = 30;
+        const newHead = {
+            x: this.snakeFreeSegments[0].x + this.snakeDirection.x * moveStep,
+            y: this.snakeFreeSegments[0].y + this.snakeDirection.y * moveStep
+        };
+        
+        newHead.x = Math.max(30, Math.min(GAME_CONFIG.CANVAS_WIDTH - 30, newHead.x));
+        newHead.y = Math.max(30, Math.min(GAME_CONFIG.CANVAS_HEIGHT - 30, newHead.y));
+        
+        for (let i = 1; i < this.snakeFreeSegments.length - 1; i++) {
+            if (newHead.x === this.snakeFreeSegments[i].x && 
+                newHead.y === this.snakeFreeSegments[i].y) {
+                return;
+            }
+        }
+        
+        this.snakeFreeSegments.unshift(newHead);
+        this.snakeFreeSegments.pop();
+        
+        if (this.goldenApple && !this.goldenAppleCollected) {
+            const headX = this.snakeFreeSegments[0].x;
+            const headY = this.snakeFreeSegments[0].y;
+            const dx = headX - this.goldenApple.x;
+            const dy = headY - this.goldenApple.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < this.goldenApple.radius + 20) {
+                this.collectGoldenApple();
+            }
+        }
+    }
+    
+    collectGoldenApple() {
+        this.goldenAppleCollected = true;
+        this.goldenApple = null;
+        this.doorsOpen = true;
+        this.spawnDoors();
     }
     
     handleInput() {
@@ -296,10 +432,14 @@ class RaceRoom extends BaseRoomPlugin {
         ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
         
-        if (this.isFinished) {
+        if (this.freeMoveMode) {
+            this.renderFreeMoveScene(ctx);
+        } else if (this.isFinished) {
             this.renderFinish(ctx);
         } else {
             this.renderTracks(ctx);
+            
+            this.renderFinishLine(ctx);
             
             this.obstacles.forEach(obs => {
                 this.renderObstacle(ctx, obs);
@@ -315,6 +455,176 @@ class RaceRoom extends BaseRoomPlugin {
             
             this.renderHUD(ctx);
         }
+    }
+    
+    renderFinishLine(ctx) {
+        if (this.finishLineY < -50 || this.finishLineY > GAME_CONFIG.CANVAS_HEIGHT + 50) return;
+        
+        const centerX = GAME_CONFIG.CANVAS_WIDTH / 2;
+        const trackStartX = centerX - this.trackWidth * 1.5 - 30;
+        const trackWidth = this.trackWidth * 3 + 60;
+        
+        ctx.save();
+        
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(trackStartX, this.finishLineY, trackWidth, 5);
+        
+        const squareSize = 15;
+        const startY = this.finishLineY - squareSize;
+        
+        for (let x = trackStartX; x < trackStartX + trackWidth; x += squareSize) {
+            const isEvenCol = Math.floor((x - trackStartX) / squareSize) % 2 === 0;
+            ctx.fillStyle = isEvenCol ? '#000' : '#fff';
+            ctx.fillRect(x, startY, squareSize, squareSize);
+            
+            ctx.fillStyle = isEvenCol ? '#fff' : '#000';
+            ctx.fillRect(x, this.finishLineY, squareSize, squareSize);
+        }
+        
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 16px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('终点线', centerX, startY - 15);
+        
+        ctx.restore();
+    }
+    
+    renderFreeMoveScene(ctx) {
+        this.renderFreeMoveBackground(ctx);
+        
+        if (this.goldenApple && !this.goldenAppleCollected) {
+            this.renderGoldenApple(ctx);
+        }
+        
+        this.renderFreeMoveSnake(ctx);
+        
+        if (this.doorsOpen) {
+            this.renderFinish(ctx);
+        } else {
+            this.renderFreeMoveHUD(ctx);
+        }
+    }
+    
+    renderFreeMoveBackground(ctx) {
+        const gradient = ctx.createLinearGradient(0, 0, 0, GAME_CONFIG.CANVAS_HEIGHT);
+        gradient.addColorStop(0, '#1a1a2e');
+        gradient.addColorStop(0.5, '#252540');
+        gradient.addColorStop(1, '#1a1a2e');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        for (let i = 0; i < 20; i++) {
+            const x = (i * 41 + this.trackOffset) % GAME_CONFIG.CANVAS_WIDTH;
+            const y = (i * 31) % GAME_CONFIG.CANVAS_HEIGHT;
+            ctx.fillRect(x, y, 2, 2);
+        }
+    }
+    
+    renderGoldenApple(ctx) {
+        const x = this.goldenApple.x;
+        const y = this.goldenApple.y;
+        const glowRadius = Math.sin(this.goldenApple.glow) * 8 + 12;
+        
+        ctx.beginPath();
+        ctx.arc(x, y, this.goldenApple.radius + glowRadius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
+        ctx.fill();
+        
+        ctx.beginPath();
+        ctx.arc(x, y, this.goldenApple.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffd700';
+        ctx.fill();
+        
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.beginPath();
+        ctx.arc(x - 5, y - 5, 5, 0, Math.PI * 2);
+        ctx.fill();
+        
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 16px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('金苹果', x, y - this.goldenApple.radius - 15);
+    }
+    
+    renderFreeMoveSnake(ctx) {
+        for (let i = this.snakeFreeSegments.length - 1; i >= 0; i--) {
+            const seg = this.snakeFreeSegments[i];
+            const isHead = i === 0;
+            const color = isHead ? '#06d6a0' : '#118ab2';
+            
+            ctx.fillStyle = color;
+            
+            const segWidth = isHead ? 30 : 25;
+            const segHeight = isHead ? 30 : 25;
+            
+            ctx.fillRect(seg.x - segWidth / 2, seg.y - segHeight / 2, segWidth, segHeight);
+            
+            if (isHead) {
+                if (this.shield) {
+                    ctx.strokeStyle = '#4ecdc4';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.arc(seg.x, seg.y, segWidth / 2 + 8, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+                
+                ctx.fillStyle = '#fff';
+                const eyeSize = 4;
+                
+                if (this.snakeDirection.x === 1) {
+                    ctx.fillRect(seg.x + 5, seg.y - 8, eyeSize, eyeSize);
+                    ctx.fillRect(seg.x + 5, seg.y + 4, eyeSize, eyeSize);
+                } else if (this.snakeDirection.x === -1) {
+                    ctx.fillRect(seg.x - 9, seg.y - 8, eyeSize, eyeSize);
+                    ctx.fillRect(seg.x - 9, seg.y + 4, eyeSize, eyeSize);
+                } else if (this.snakeDirection.y === -1) {
+                    ctx.fillRect(seg.x - 8, seg.y - 8, eyeSize, eyeSize);
+                    ctx.fillRect(seg.x + 4, seg.y - 8, eyeSize, eyeSize);
+                } else {
+                    ctx.fillRect(seg.x - 8, seg.y + 4, eyeSize, eyeSize);
+                    ctx.fillRect(seg.x + 4, seg.y + 4, eyeSize, eyeSize);
+                }
+                
+                ctx.fillStyle = '#000';
+                if (this.snakeDirection.x === 1) {
+                    ctx.fillRect(seg.x + 6, seg.y - 7, 2, 2);
+                    ctx.fillRect(seg.x + 6, seg.y + 5, 2, 2);
+                } else if (this.snakeDirection.x === -1) {
+                    ctx.fillRect(seg.x - 8, seg.y - 7, 2, 2);
+                    ctx.fillRect(seg.x - 8, seg.y + 5, 2, 2);
+                } else if (this.snakeDirection.y === -1) {
+                    ctx.fillRect(seg.x - 7, seg.y - 7, 2, 2);
+                    ctx.fillRect(seg.x + 5, seg.y - 7, 2, 2);
+                } else {
+                    ctx.fillRect(seg.x - 7, seg.y + 5, 2, 2);
+                    ctx.fillRect(seg.x + 5, seg.y + 5, 2, 2);
+                }
+            }
+            
+            ctx.strokeStyle = '#073b4c';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(seg.x - segWidth / 2, seg.y - segHeight / 2, segWidth, segHeight);
+        }
+    }
+    
+    renderFreeMoveHUD(ctx) {
+        ctx.fillStyle = '#ffd700';
+        ctx.font = 'bold 24px Courier New';
+        ctx.textAlign = 'center';
+        ctx.fillText('🏆 赛蛇完成！', GAME_CONFIG.CANVAS_WIDTH / 2, 40);
+        
+        ctx.fillStyle = '#fff';
+        ctx.font = '16px Courier New';
+        ctx.fillText('使用方向键移动蛇，吃掉金苹果！', GAME_CONFIG.CANVAS_WIDTH / 2, 70);
+        
+        ctx.fillStyle = '#888';
+        ctx.font = '14px Courier New';
+        ctx.fillText('↑↓←→ 或 WASD 移动', GAME_CONFIG.CANVAS_WIDTH / 2, GAME_CONFIG.CANVAS_HEIGHT - 20);
     }
     
     renderTracks(ctx) {

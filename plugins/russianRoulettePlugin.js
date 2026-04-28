@@ -24,6 +24,8 @@ const ROULETTE_ITEM_DESCRIPTIONS = {
 
 const REVOLVER_CHAMBER_SIZE = 8;
 
+const ROULETTE_MAX_AI_HEALTH = 2;
+
 class RussianRouletteRoom extends BaseRoomPlugin {
     constructor(game) {
         super(game);
@@ -34,7 +36,7 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         this.round = 1;
         
         this.playerHealth = GAME_CONFIG.INITIAL_HEALTH;
-        this.aiHealth = 1;
+        this.aiHealth = ROULETTE_MAX_AI_HEALTH;
         
         this.chamber = new Array(REVOLVER_CHAMBER_SIZE).fill(false);
         this.currentChamber = 0;
@@ -61,6 +63,14 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         
         this.spinning = false;
         this.spinAngle = 0;
+        
+        this.reloadAnimation = false;
+        this.reloadTimer = 0;
+        this.reloadBullets = 0;
+        this.reloadCurrentBullet = 0;
+        this.spinAnimation = false;
+        this.spinAnimationTimer = 0;
+        this.spinAnimationSpeed = 0;
         
         this.exitDoor = null;
         this.roomCompleted = false;
@@ -287,28 +297,27 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         if (this.turn === 'player') {
             this.turn = 'ai';
             this.phase = 'ai_turn';
+            
+            const aiAvailable = this.aiItems.filter(i => !i.used).length;
+            if (aiAvailable < this.maxItems) {
+                const newItem = this.drawItems(1)[0];
+                this.aiItems.push(newItem);
+            }
+            
             setTimeout(() => this.aiTurn(), 1000);
         } else {
             this.turn = 'player';
             this.phase = 'player_turn';
             
-            if (this.round > 1) {
-                const playerAvailable = this.playerItems.filter(i => !i.used).length;
-                const aiAvailable = this.aiItems.filter(i => !i.used).length;
-                
-                if (playerAvailable < this.maxItems) {
-                    const newItem = this.drawItems(1)[0];
-                    this.playerItems.push(newItem);
-                    this.showMessage('新回合开始，你获得了一个新道具！');
-                } else {
-                    this.showMessage('新回合开始，道具已满无法获得新道具');
-                }
-                
-                if (aiAvailable < this.maxItems) {
-                    const newItem = this.drawItems(1)[0];
-                    this.aiItems.push(newItem);
-                }
+            const playerAvailable = this.playerItems.filter(i => !i.used).length;
+            if (playerAvailable < this.maxItems) {
+                const newItem = this.drawItems(1)[0];
+                this.playerItems.push(newItem);
+                this.showMessage('新回合开始，你获得了一个新道具！');
+            } else {
+                this.showMessage('轮到你了！选择道具或开枪');
             }
+            
             this.round++;
         }
     }
@@ -348,14 +357,53 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         }
         
         if (this.totalBullets <= 0) {
-            this.phase = 'victory';
-            this.roomCompleted = true;
-            this.showMessage('弹仓已空，你赢了！');
-            this.spawnExitDoor();
+            this.startReload();
             return;
         }
         
         this.endTurn();
+    }
+    
+    startReload() {
+        this.phase = 'reloading';
+        this.reloadBullets = MathUtils.randomInt(1, Math.floor(REVOLVER_CHAMBER_SIZE / 2));
+        this.reloadCurrentBullet = 0;
+        this.reloadAnimation = true;
+        this.reloadTimer = 0;
+        this.showMessage(`弹仓已空！重新填入 ${this.reloadBullets} 发子弹...`);
+    }
+    
+    finishReload() {
+        this.chamber = new Array(REVOLVER_CHAMBER_SIZE).fill(false);
+        
+        let bulletsPlaced = 0;
+        while (bulletsPlaced < this.reloadBullets) {
+            const pos = Math.floor(Math.random() * REVOLVER_CHAMBER_SIZE);
+            if (!this.chamber[pos]) {
+                this.chamber[pos] = true;
+                bulletsPlaced++;
+            }
+        }
+        
+        this.totalBullets = this.reloadBullets;
+        this.currentChamber = Math.floor(Math.random() * REVOLVER_CHAMBER_SIZE);
+        
+        this.startSpinAnimation();
+    }
+    
+    startSpinAnimation() {
+        this.phase = 'spinning';
+        this.spinAnimation = true;
+        this.spinAnimationTimer = 0;
+        this.spinAnimationSpeed = 0.3;
+        this.showMessage('旋转弹仓...');
+    }
+    
+    finishSpinAnimation() {
+        this.spinAnimation = false;
+        this.turn = 'player';
+        this.phase = 'player_turn';
+        this.showMessage('新回合开始！轮到你了！');
     }
     
     spawnExitDoor() {
@@ -374,7 +422,10 @@ class RussianRouletteRoom extends BaseRoomPlugin {
     
     update(deltaTime) {
         super.update(deltaTime);
-        this.handleInput();
+        
+        if (this.phase === 'player_turn') {
+            this.handleInput();
+        }
         
         if (this.messageTimer > 0) {
             this.messageTimer -= deltaTime;
@@ -382,6 +433,30 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         
         if (this.spinning) {
             this.spinAngle += deltaTime * 0.01;
+        }
+        
+        if (this.phase === 'reloading' && this.reloadAnimation) {
+            this.reloadTimer += deltaTime;
+            
+            if (this.reloadTimer >= 500) {
+                this.reloadTimer = 0;
+                this.reloadCurrentBullet++;
+                
+                if (this.reloadCurrentBullet >= this.reloadBullets) {
+                    this.reloadAnimation = false;
+                    setTimeout(() => this.finishReload(), 500);
+                }
+            }
+        }
+        
+        if (this.phase === 'spinning' && this.spinAnimation) {
+            this.spinAnimationTimer += deltaTime;
+            this.spinAngle += this.spinAnimationSpeed;
+            this.spinAnimationSpeed *= 0.998;
+            
+            if (this.spinAnimationTimer >= 2000) {
+                this.finishSpinAnimation();
+            }
         }
         
         if (this.roomCompleted && this.exitDoor) {
@@ -524,19 +599,30 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         ctx.textAlign = 'right';
         ctx.fillText('AI生命:', aiX, statusY);
         
-        for (let i = 0; i < 1; i++) {
+        for (let i = 0; i < ROULETTE_MAX_AI_HEALTH; i++) {
             ctx.fillStyle = i < this.aiHealth ? '#ff6b6b' : '#333';
             ctx.fillText('❤️', aiX - 70 + i * 25, statusY);
         }
         
-        ctx.fillStyle = this.turn === 'player' ? '#06d6a0' : '#e94560';
-        ctx.font = 'bold 20px Courier New';
-        ctx.textAlign = 'center';
-        ctx.fillText(
-            this.turn === 'player' ? '👤 你的回合' : '🤖 AI回合',
-            GAME_CONFIG.CANVAS_WIDTH / 2,
-            statusY
-        );
+        if (this.phase === 'reloading' || this.phase === 'spinning') {
+            ctx.fillStyle = '#ffd700';
+            ctx.font = 'bold 20px Courier New';
+            ctx.textAlign = 'center';
+            if (this.phase === 'reloading') {
+                ctx.fillText('⏳ 填弹中...', GAME_CONFIG.CANVAS_WIDTH / 2, statusY);
+            } else {
+                ctx.fillText('🔄 旋转弹仓...', GAME_CONFIG.CANVAS_WIDTH / 2, statusY);
+            }
+        } else {
+            ctx.fillStyle = this.turn === 'player' ? '#06d6a0' : '#e94560';
+            ctx.font = 'bold 20px Courier New';
+            ctx.textAlign = 'center';
+            ctx.fillText(
+                this.turn === 'player' ? '👤 你的回合' : '🤖 AI回合',
+                GAME_CONFIG.CANVAS_WIDTH / 2,
+                statusY
+            );
+        }
         
         ctx.fillStyle = '#fff';
         ctx.font = '14px Courier New';
@@ -544,21 +630,22 @@ class RussianRouletteRoom extends BaseRoomPlugin {
     }
     
     renderItems(ctx) {
-        const startX = 100;
+        const playerStartX = 100;
+        const aiStartX = GAME_CONFIG.CANVAS_WIDTH - 100;
         const startY = GAME_CONFIG.CANVAS_HEIGHT - 80;
         const itemWidth = 60;
         const itemHeight = 50;
         const spacing = 15;
         
-        const availableItems = this.playerItems.filter(i => !i.used);
+        const playerAvailableItems = this.playerItems.filter(i => !i.used);
         
-        ctx.fillStyle = '#fff';
+        ctx.fillStyle = '#06d6a0';
         ctx.font = '14px Courier New';
         ctx.textAlign = 'left';
-        ctx.fillText('你的道具 (←→选择, Enter使用):', startX, startY - 15);
+        ctx.fillText('你的道具 (←→选择, Enter使用):', playerStartX, startY - 15);
         
-        availableItems.forEach((item, index) => {
-            const x = startX + index * (itemWidth + spacing);
+        playerAvailableItems.forEach((item, index) => {
+            const x = playerStartX + index * (itemWidth + spacing);
             const isSelected = index === this.selectedItemIndex;
             
             ctx.fillStyle = isSelected ? '#ffd700' : '#444';
@@ -581,11 +668,11 @@ class RussianRouletteRoom extends BaseRoomPlugin {
             }
         });
         
-        if (availableItems.length === 0) {
+        if (playerAvailableItems.length === 0) {
             ctx.fillStyle = '#666';
             ctx.font = '14px Courier New';
             ctx.textAlign = 'left';
-            ctx.fillText('没有可用道具', startX, startY + 30);
+            ctx.fillText('没有可用道具', playerStartX, startY + 30);
         }
         
         if (this.phase === 'player_turn') {
@@ -599,13 +686,64 @@ class RussianRouletteRoom extends BaseRoomPlugin {
             ctx.fillStyle = '#ff6b6b';
             ctx.font = '12px Courier New';
             ctx.textAlign = 'left';
-            ctx.fillText('🔥 火药壶激活', startX, startY + itemHeight + 20);
+            ctx.fillText('🔥 火药壶激活', playerStartX, startY + itemHeight + 20);
         }
         if (this.waterBasinActive.player) {
             ctx.fillStyle = '#4cc9f0';
             ctx.font = '12px Courier New';
             ctx.textAlign = 'left';
-            ctx.fillText('💧 水盆激活', startX + 120, startY + itemHeight + 20);
+            ctx.fillText('💧 水盆激活', playerStartX + 120, startY + itemHeight + 20);
+        }
+        
+        const aiAvailableItems = this.aiItems.filter(i => !i.used);
+        
+        ctx.fillStyle = '#e94560';
+        ctx.font = '14px Courier New';
+        ctx.textAlign = 'right';
+        ctx.fillText('AI的道具:', aiStartX, startY - 15);
+        
+        ctx.textAlign = 'right';
+        for (let i = 0; i < aiAvailableItems.length; i++) {
+            const item = aiAvailableItems[i];
+            const x = aiStartX - i * (itemWidth + spacing);
+            const leftX = x - itemWidth;
+            
+            ctx.fillStyle = '#443333';
+            ctx.fillRect(leftX, startY, itemWidth, itemHeight);
+            
+            ctx.strokeStyle = '#665555';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(leftX, startY, itemWidth, itemHeight);
+            
+            const emoji = this.getItemEmoji(item.type);
+            ctx.fillStyle = '#fff';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(emoji, leftX + itemWidth / 2, startY + itemHeight / 2 + 8);
+            
+            ctx.fillStyle = '#aaa';
+            ctx.font = '10px Courier New';
+            ctx.fillText(ROULETTE_ITEM_NAMES[item.type], leftX + itemWidth / 2, startY - 5);
+        }
+        
+        if (aiAvailableItems.length === 0) {
+            ctx.fillStyle = '#665555';
+            ctx.font = '14px Courier New';
+            ctx.textAlign = 'right';
+            ctx.fillText('AI没有可用道具', aiStartX, startY + 30);
+        }
+        
+        if (this.gunpowderActive.ai) {
+            ctx.fillStyle = '#ff6b6b';
+            ctx.font = '12px Courier New';
+            ctx.textAlign = 'right';
+            ctx.fillText('🔥 AI火药壶激活', aiStartX, startY + itemHeight + 20);
+        }
+        if (this.waterBasinActive.ai) {
+            ctx.fillStyle = '#4cc9f0';
+            ctx.font = '12px Courier New';
+            ctx.textAlign = 'right';
+            ctx.fillText('💧 AI水盆激活', aiStartX - 120, startY + itemHeight + 20);
         }
     }
     
