@@ -17,7 +17,7 @@ class FallRoom extends BaseRoomPlugin {
         };
         
         this.platforms = [];
-        this.safePlatforms = [];
+        this.safePlatform = null;
         this.apple = null;
         this.appleCollected = false;
         
@@ -28,9 +28,8 @@ class FallRoom extends BaseRoomPlugin {
         this.platformVerticalSpacing = 70;
         
         this.scrollSpeed = 1.0;
+        this.isScrolling = true;
         
-        this.respawnPlatform = null;
-        this.isRespawning = false;
         this.startPlatform = null;
         
         this.generateInitialPlatforms();
@@ -47,7 +46,6 @@ class FallRoom extends BaseRoomPlugin {
             isStart: true
         };
         this.platforms.push(this.startPlatform);
-        this.respawnPlatform = this.startPlatform;
         
         let lastY = this.startPlatform.y + this.platformVerticalSpacing;
         const platformCount = Math.ceil(GAME_CONFIG.CANVAS_HEIGHT / this.platformVerticalSpacing) + 3;
@@ -81,16 +79,17 @@ class FallRoom extends BaseRoomPlugin {
         };
     }
     
-    generateSafePlatforms() {
-        this.safePlatforms = [];
+    createSafePlatformAndApple() {
+        this.isScrolling = false;
         
         const safePlatformY = GAME_CONFIG.CANVAS_HEIGHT - 80;
-        this.safePlatforms.push({
+        this.safePlatform = {
             x: 0,
             y: safePlatformY,
             width: GAME_CONFIG.CANVAS_WIDTH,
-            height: 20
-        });
+            height: 20,
+            isSafe: true
+        };
         
         this.apple = {
             x: GAME_CONFIG.CANVAS_WIDTH / 2 - 20,
@@ -122,48 +121,57 @@ class FallRoom extends BaseRoomPlugin {
             return;
         }
         
-        if (!this.appleCollected) {
-            this.player.vy += this.player.gravity;
-            
-            this.player.x += this.player.vx;
-            this.player.y += this.player.vy;
-            
-            if (this.player.x < 0) {
-                this.player.x = 0;
-                this.player.vx = 0;
-            }
-            if (this.player.x > GAME_CONFIG.CANVAS_WIDTH - this.player.width) {
-                this.player.x = GAME_CONFIG.CANVAS_WIDTH - this.player.width;
-                this.player.vx = 0;
-            }
-            
+        this.player.vy += this.player.gravity;
+        this.player.x += this.player.vx;
+        this.player.y += this.player.vy;
+        
+        if (this.player.x < 0) {
+            this.player.x = 0;
+            this.player.vx = 0;
+        }
+        if (this.player.x > GAME_CONFIG.CANVAS_WIDTH - this.player.width) {
+            this.player.x = GAME_CONFIG.CANVAS_WIDTH - this.player.width;
+            this.player.vx = 0;
+        }
+        
+        if (this.isScrolling && !this.appleCollected) {
             for (const platform of this.platforms) {
                 platform.y -= this.scrollSpeed;
             }
             
-            this.player.onGround = false;
-            for (const platform of this.platforms) {
-                if (CollisionUtils.checkPlatformCollision(this.player, platform)) {
-                    if (this.player.vy > 0) {
-                        this.player.y = platform.y - this.player.height;
-                        this.player.vy = 0;
-                        this.player.onGround = true;
-                        this.player.isJumping = false;
-                        
-                        if (!platform.isStart && !platform.isBottom) {
-                            this.respawnPlatform = platform;
-                        }
-                        
-                        if (!platform.passed && !platform.isStart && !platform.isBottom) {
-                            platform.passed = true;
-                            this.platformsPassed++;
-                        }
+            this.player.y -= this.scrollSpeed;
+        }
+        
+        this.player.onGround = false;
+        
+        if (this.safePlatform) {
+            if (CollisionUtils.checkPlatformCollision(this.player, this.safePlatform)) {
+                if (this.player.vy > 0) {
+                    this.player.y = this.safePlatform.y - this.player.height;
+                    this.player.vy = 0;
+                    this.player.onGround = true;
+                }
+            }
+        }
+        
+        for (const platform of this.platforms) {
+            if (CollisionUtils.checkPlatformCollision(this.player, platform)) {
+                if (this.player.vy > 0) {
+                    this.player.y = platform.y - this.player.height;
+                    this.player.vy = 0;
+                    this.player.onGround = true;
+                    
+                    if (!platform.passed && !platform.isStart && this.isScrolling) {
+                        platform.passed = true;
+                        this.platformsPassed++;
                     }
                 }
             }
-            
+        }
+        
+        if (this.isScrolling && !this.appleCollected) {
             const bottomPlatform = this.platforms.reduce((max, p) => 
-                (!p.isBottom && p.y > (max?.y || -Infinity)) ? p : max, null);
+                p.y > (max?.y || -Infinity) ? p : max, null);
             
             if (bottomPlatform && bottomPlatform.y < GAME_CONFIG.CANVAS_HEIGHT + 100) {
                 const newPlatform = this.generatePlatformAt(
@@ -176,73 +184,23 @@ class FallRoom extends BaseRoomPlugin {
                 return platform.y + platform.height > -50;
             });
             
-            if (this.platformsPassed >= this.totalPlatformsNeeded && !this.apple) {
-                const existingBottom = this.platforms.find(p => p.isBottom);
-                if (!existingBottom) {
-                    const bottomPlatform = {
-                        x: 0,
-                        y: GAME_CONFIG.CANVAS_HEIGHT - 50,
-                        width: GAME_CONFIG.CANVAS_WIDTH,
-                        height: 20,
-                        isBottom: true
-                    };
-                    this.platforms.push(bottomPlatform);
-                    
-                    this.apple = {
-                        x: GAME_CONFIG.CANVAS_WIDTH / 2 - 20,
-                        y: bottomPlatform.y - 50,
-                        width: 40,
-                        height: 40,
-                        glow: 0
-                    };
-                }
+            if (this.platformsPassed >= this.totalPlatformsNeeded && !this.safePlatform) {
+                this.createSafePlatformAndApple();
             }
-            
-            if (this.player.y + this.player.height < -20) {
-                this.handleHitTop();
-            }
-            
-            if (this.player.y > GAME_CONFIG.CANVAS_HEIGHT + 50) {
-                this.handleFallOff();
-            }
-            
-            if (this.apple && CollisionUtils.checkRectCollision(this.player, this.apple)) {
-                this.appleCollected = true;
-                this.apple = null;
-                this.platforms = [];
-                this.generateSafePlatforms();
-            }
-        } else {
-            this.player.vy += this.player.gravity * 0.5;
-            this.player.x += this.player.vx;
-            this.player.y += this.player.vy;
-            
-            if (this.player.x < 0) {
-                this.player.x = 0;
-            }
-            if (this.player.x > GAME_CONFIG.CANVAS_WIDTH - this.player.width) {
-                this.player.x = GAME_CONFIG.CANVAS_WIDTH - this.player.width;
-            }
-            
-            for (const platform of this.safePlatforms) {
-                if (CollisionUtils.checkPlatformCollision(this.player, platform)) {
-                    if (this.player.vy > 0) {
-                        this.player.y = platform.y - this.player.height;
-                        this.player.vy = 0;
-                        this.player.onGround = true;
-                    }
-                }
-            }
-            
-            if (this.player.y > GAME_CONFIG.CANVAS_HEIGHT + 100) {
-                this.game.data.takeDamage();
-                if (this.game.data.getHealth() > 0) {
-                    this.player.x = GAME_CONFIG.CANVAS_WIDTH / 2 - 20;
-                    this.player.y = GAME_CONFIG.CANVAS_HEIGHT - 200;
-                    this.player.vx = 0;
-                    this.player.vy = 0;
-                }
-            }
+        }
+        
+        if (this.player.y + this.player.height < -50) {
+            this.handleDeath();
+        }
+        
+        if (this.player.y > GAME_CONFIG.CANVAS_HEIGHT + 100) {
+            this.handleDeath();
+        }
+        
+        if (this.apple && CollisionUtils.checkRectCollision(this.player, this.apple)) {
+            this.appleCollected = true;
+            this.apple = null;
+            this.roomComplete();
         }
         
         if (this.apple) {
@@ -250,7 +208,7 @@ class FallRoom extends BaseRoomPlugin {
         }
     }
     
-    handleHitTop() {
+    handleDeath() {
         this.game.data.takeDamage();
         
         if (this.game.data.getHealth() <= 0) {
@@ -259,11 +217,20 @@ class FallRoom extends BaseRoomPlugin {
         
         this.isRespawning = true;
         
-        let respawnTarget = this.respawnPlatform || this.startPlatform;
+        let respawnPlatform = this.findLowestPlatform();
+        
+        if (!respawnPlatform) {
+            respawnPlatform = {
+                x: GAME_CONFIG.CANVAS_WIDTH / 2 - 60,
+                y: GAME_CONFIG.CANVAS_HEIGHT - 100,
+                width: 120,
+                height: 15
+            };
+        }
         
         setTimeout(() => {
-            this.player.x = respawnTarget.x + respawnTarget.width / 2 - this.player.width / 2;
-            this.player.y = respawnTarget.y - this.player.height;
+            this.player.x = respawnPlatform.x + respawnPlatform.width / 2 - this.player.width / 2;
+            this.player.y = respawnPlatform.y - this.player.height;
             this.player.vx = 0;
             this.player.vy = 0;
             this.player.onGround = true;
@@ -272,51 +239,48 @@ class FallRoom extends BaseRoomPlugin {
         }, 500);
     }
     
-    handleFallOff() {
-        this.game.data.takeDamage();
+    findLowestPlatform() {
+        let lowestPlatform = null;
+        let lowestY = -Infinity;
         
-        if (this.game.data.getHealth() <= 0) {
-            return;
+        for (const platform of this.platforms) {
+            if (platform.y > 0 && platform.y < GAME_CONFIG.CANVAS_HEIGHT) {
+                if (platform.y > lowestY) {
+                    lowestY = platform.y;
+                    lowestPlatform = platform;
+                }
+            }
         }
         
-        this.isRespawning = true;
+        if (this.safePlatform && this.safePlatform.y > lowestY) {
+            lowestPlatform = this.safePlatform;
+        }
         
-        let respawnTarget = this.respawnPlatform || this.startPlatform;
-        
-        setTimeout(() => {
-            this.player.x = respawnTarget.x + respawnTarget.width / 2 - this.player.width / 2;
-            this.player.y = respawnTarget.y - this.player.height;
-            this.player.vx = 0;
-            this.player.vy = 0;
-            this.player.onGround = true;
-            this.player.isJumping = false;
-            this.isRespawning = false;
-        }, 500);
+        return lowestPlatform;
     }
     
     render(ctx) {
         ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(0, 0, GAME_CONFIG.CANVAS_WIDTH, GAME_CONFIG.CANVAS_HEIGHT);
         
-        if (this.appleCollected) {
-            for (const platform of this.safePlatforms) {
-                this.renderPlatform(ctx, platform, true);
-            }
-        } else {
-            const gridY = Math.floor(this.scrollSpeed * 10 / 50) * 50;
+        if (!this.appleCollected) {
             ctx.strokeStyle = 'rgba(100, 100, 150, 0.1)';
             ctx.lineWidth = 1;
             
-            for (let y = gridY - 50; y < GAME_CONFIG.CANVAS_HEIGHT + 100; y += 50) {
+            for (let y = 0; y < GAME_CONFIG.CANVAS_HEIGHT + 100; y += 50) {
                 ctx.beginPath();
                 ctx.moveTo(0, y);
                 ctx.lineTo(GAME_CONFIG.CANVAS_WIDTH, y);
                 ctx.stroke();
             }
-            
-            for (const platform of this.platforms) {
-                this.renderPlatform(ctx, platform, platform.isStart || platform.isBottom);
-            }
+        }
+        
+        for (const platform of this.platforms) {
+            this.renderPlatform(ctx, platform, platform.isStart);
+        }
+        
+        if (this.safePlatform) {
+            this.renderPlatform(ctx, this.safePlatform, true);
         }
         
         if (this.apple) {
@@ -410,12 +374,14 @@ class FallRoom extends BaseRoomPlugin {
         ctx.font = '16px Courier New';
         
         if (!this.appleCollected) {
-            const remaining = Math.max(0, this.totalPlatformsNeeded - this.platformsPassed);
-            ctx.fillText(`剩余层数: ${remaining}`, GAME_CONFIG.CANVAS_WIDTH / 2 - 50, 30);
-            ctx.fillText('控制蛇向下移动踩平台！', GAME_CONFIG.CANVAS_WIDTH / 2 - 80, 55);
-        } else {
-            ctx.fillStyle = '#06d6a0';
-            ctx.fillText('收集金苹果！', GAME_CONFIG.CANVAS_WIDTH / 2 - 50, 30);
+            if (this.platformsPassed >= this.totalPlatformsNeeded) {
+                ctx.fillStyle = '#06d6a0';
+                ctx.fillText('落到安全平台收集金苹果！', GAME_CONFIG.CANVAS_WIDTH / 2 - 90, 30);
+            } else {
+                const remaining = Math.max(0, this.totalPlatformsNeeded - this.platformsPassed);
+                ctx.fillText(`剩余层数: ${remaining}`, GAME_CONFIG.CANVAS_WIDTH / 2 - 50, 30);
+                ctx.fillText('控制蛇向下移动踩平台！', GAME_CONFIG.CANVAS_WIDTH / 2 - 80, 55);
+            }
         }
     }
 }
