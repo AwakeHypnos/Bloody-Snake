@@ -115,6 +115,7 @@ class Game {
             this.currentRoom = this.pluginManager.create(this.currentRoomType, this);
             this.uiManager.updateRoomInfo(this.data.getRoomsCompleted(), this.currentRoomType);
             
+            this.lastTime = performance.now();
             this.state = GAME_STATES.PLAYING;
         }, 1500);
     }

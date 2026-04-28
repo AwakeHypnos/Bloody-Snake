@@ -47,12 +47,12 @@ class SnakeRoom extends BaseRoomPlugin {
         this.roomApple = null;
         this.roomAppleSpawned = false;
         
-        this.apple = this.spawnApple();
-        
         this.powerups = [];
         this.powerupSpawnTimer = 0;
         this.powerupSpawnInterval = 5000;
         this.mines = [];
+        
+        this.apple = this.spawnApple();
         
         this.doors = [];
         this.doorsOpen = false;
