@@ -41,6 +41,7 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         this.chamber = new Array(REVOLVER_CHAMBER_SIZE).fill(false);
         this.currentChamber = 0;
         this.totalBullets = 0;
+        this.initialBullets = 0;
         
         this.playerItems = [];
         this.aiItems = [];
@@ -95,6 +96,7 @@ class RussianRouletteRoom extends BaseRoomPlugin {
     
     initializeGame() {
         this.totalBullets = MathUtils.randomInt(1, Math.floor(REVOLVER_CHAMBER_SIZE / 2));
+        this.initialBullets = this.totalBullets;
         this.chamber = new Array(REVOLVER_CHAMBER_SIZE).fill(false);
         
         let bulletsPlaced = 0;
@@ -408,6 +410,7 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         }
         
         this.totalBullets = this.reloadBullets;
+        this.initialBullets = this.reloadBullets;
         this.currentChamber = Math.floor(Math.random() * REVOLVER_CHAMBER_SIZE);
         
         this.startSpinAnimation();
@@ -723,6 +726,7 @@ class RussianRouletteRoom extends BaseRoomPlugin {
         ctx.fillStyle = '#fff';
         ctx.font = '14px Courier New';
         ctx.fillText(`第 ${this.round} 回合`, GAME_CONFIG.CANVAS_WIDTH / 2, statusY + 25);
+        ctx.fillText(`本轮 ${this.initialBullets} 发子弹`, GAME_CONFIG.CANVAS_WIDTH / 2, statusY + 45);
     }
     
     renderItems(ctx) {

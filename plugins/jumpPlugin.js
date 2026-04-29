@@ -10,13 +10,13 @@ class JumpRoom extends BaseRoomPlugin {
             height: 60,
             vx: 0,
             vy: 0,
-            speed: 2,
-            jumpPower: -14,
-            gravity: 0.22,
+            speed: 1.4,
+            jumpPower: -11,
+            gravity: 0.28,
             onGround: false,
             isJumping: false,
             jumpCooldown: 0,
-            jumpCooldownDuration: 500
+            jumpCooldownDuration: 150
         };
         
         this.platforms = [];
@@ -50,7 +50,7 @@ class JumpRoom extends BaseRoomPlugin {
         };
         this.platforms.push(startPlatform);
         
-        const verticalSpacing = 80;
+        const verticalSpacing = 65;
         const horizontalRange = 300;
         
         for (let i = 1; i < this.platformCount; i++) {

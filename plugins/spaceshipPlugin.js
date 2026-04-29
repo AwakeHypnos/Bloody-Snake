@@ -195,7 +195,8 @@ class SpaceshipRoom extends BaseRoomPlugin {
     }
     
     handleInput() {
-        if (this.game.keys['ArrowUp'] && this.player.y > 100) {
+        const minY = this.bossDefeated ? 10 : 100;
+        if (this.game.keys['ArrowUp'] && this.player.y > minY) {
             this.player.y -= this.player.speed;
         }
         if (this.game.keys['ArrowDown'] && this.player.y < GAME_CONFIG.CANVAS_HEIGHT - this.player.height - 10) {
