@@ -159,6 +159,9 @@ class BubbleRoom extends BaseRoomPlugin {
     }
     
     updateFlyingBubble() {
+        const prevX = this.flyingBubble.x;
+        const prevY = this.flyingBubble.y;
+        
         this.flyingBubble.x += this.flyingBubble.vx;
         this.flyingBubble.y += this.flyingBubble.vy;
         
@@ -176,20 +179,10 @@ class BubbleRoom extends BaseRoomPlugin {
             return;
         }
         
-        for (let row = 0; row < BUBBLE_GRID_ROWS; row++) {
-            for (let col = 0; col < BUBBLE_GRID_COLS; col++) {
-                const gridBubble = this.bubbleGrid[row][col];
-                if (gridBubble) {
-                    const dx = this.flyingBubble.x - gridBubble.x;
-                    const dy = this.flyingBubble.y - gridBubble.y;
-                    const dist = Math.sqrt(dx * dx + dy * dy);
-                    
-                    if (dist < this.flyingBubble.radius + gridBubble.radius) {
-                        this.attachBubbleToGrid(gridBubble);
-                        return;
-                    }
-                }
-            }
+        const collision = this.checkBubbleCollision(prevX, prevY);
+        if (collision) {
+            this.attachBubbleToGrid(collision);
+            return;
         }
         
         if (this.flyingBubble.y > GAME_CONFIG.CANVAS_HEIGHT + 50) {
@@ -197,82 +190,155 @@ class BubbleRoom extends BaseRoomPlugin {
         }
     }
     
-    attachBubbleToGrid(nearestBubble = null) {
-        if (!this.flyingBubble) return;
+    checkBubbleCollision(prevX, prevY) {
+        const steps = 5;
+        const dx = this.flyingBubble.x - prevX;
+        const dy = this.flyingBubble.y - prevY;
         
-        let targetRow, targetCol;
-        let isOddRow;
-        
-        if (nearestBubble) {
-            const dx = this.flyingBubble.x - nearestBubble.x;
-            const dy = this.flyingBubble.y - nearestBubble.y;
+        for (let step = 0; step <= steps; step++) {
+            const t = step / steps;
+            const checkX = prevX + dx * t;
+            const checkY = prevY + dy * t;
             
-            let bestRow = nearestBubble.row;
-            let bestCol = nearestBubble.col;
-            let bestDist = Infinity;
+            let nearestBubble = null;
+            let nearestDist = Infinity;
             
-            const neighbors = this.getNeighbors(nearestBubble.row, nearestBubble.col, nearestBubble.isOddRow);
-            neighbors.push({ row: nearestBubble.row + 1, col: nearestBubble.col, isOddRow: !nearestBubble.isOddRow });
-            neighbors.push({ row: nearestBubble.row + 1, col: nearestBubble.col - 1, isOddRow: !nearestBubble.isOddRow });
-            
-            for (const pos of neighbors) {
-                if (pos.row >= 0 && pos.row < BUBBLE_GRID_ROWS && 
-                    pos.col >= 0 && pos.col < BUBBLE_GRID_COLS &&
-                    !this.bubbleGrid[pos.row][pos.col]) {
-                    
-                    const posX = pos.isOddRow 
-                        ? (pos.col + 1) * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS
-                        : pos.col * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS;
-                    const posY = 50 + pos.row * (BUBBLE_RADIUS * 2 * 0.85);
-                    
-                    const dist = MathUtils.distance(this.flyingBubble.x, this.flyingBubble.y, posX, posY);
-                    if (dist < bestDist) {
-                        bestDist = dist;
-                        bestRow = pos.row;
-                        bestCol = pos.col;
-                        isOddRow = pos.isOddRow;
+            for (let row = 0; row < BUBBLE_GRID_ROWS; row++) {
+                for (let col = 0; col < BUBBLE_GRID_COLS; col++) {
+                    const gridBubble = this.bubbleGrid[row][col];
+                    if (gridBubble) {
+                        const bubbleX = this.getBubblePosition(row, col);
+                        const dist = MathUtils.distance(checkX, checkY, bubbleX.x, bubbleX.y);
+                        
+                        if (dist < this.flyingBubble.radius + gridBubble.radius) {
+                            if (dist < nearestDist) {
+                                nearestDist = dist;
+                                nearestBubble = gridBubble;
+                            }
+                        }
                     }
                 }
             }
             
-            targetRow = bestRow;
-            targetCol = bestCol;
-        } else {
-            targetRow = 0;
-            targetCol = Math.floor(this.flyingBubble.x / (BUBBLE_RADIUS * 2));
-            targetCol = Math.max(0, Math.min(BUBBLE_GRID_COLS - 1, targetCol));
-            isOddRow = false;
-            
-            while (targetRow < BUBBLE_GRID_ROWS && this.bubbleGrid[targetRow][targetCol]) {
-                targetRow++;
-                isOddRow = !isOddRow;
+            if (nearestBubble) {
+                return nearestBubble;
             }
         }
         
-        if (targetRow >= BUBBLE_GRID_ROWS) {
+        return null;
+    }
+    
+    getBubblePosition(row, col) {
+        const isOddRow = row % 2 === 1;
+        const x = isOddRow 
+            ? (col + 1) * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS
+            : col * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS;
+        const y = 50 + row * (BUBBLE_RADIUS * 2 * 0.85);
+        return { x, y, isOddRow };
+    }
+    
+    findBestGridPosition(flyingBubble) {
+        let bestRow = -1;
+        let bestCol = -1;
+        let bestDist = Infinity;
+        
+        for (let row = 0; row < BUBBLE_GRID_ROWS; row++) {
+            const isOddRow = row % 2 === 1;
+            const colsForRow = isOddRow ? BUBBLE_GRID_COLS - 1 : BUBBLE_GRID_COLS;
+            
+            for (let col = 0; col < colsForRow; col++) {
+                if (!this.bubbleGrid[row][col]) {
+                    const pos = this.getBubblePosition(row, col);
+                    
+                    if (pos.y > flyingBubble.y - BUBBLE_RADIUS * 3) {
+                        const dist = MathUtils.distance(
+                            flyingBubble.x, flyingBubble.y,
+                            pos.x, pos.y
+                        );
+                        
+                        if (dist < bestDist) {
+                            bestDist = dist;
+                            bestRow = row;
+                            bestCol = col;
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (bestRow >= 0 && bestCol >= 0) {
+            return { row: bestRow, col: bestCol, isOddRow: bestRow % 2 === 1 };
+        }
+        
+        return null;
+    }
+    
+    findNearestEmptyPosition(nearestBubble, flyingBubble) {
+        const neighbors = this.getNeighbors(nearestBubble.row, nearestBubble.col, nearestBubble.isOddRow);
+        
+        let bestPos = null;
+        let bestDist = Infinity;
+        
+        for (const n of neighbors) {
+            if (n.row >= 0 && n.row < BUBBLE_GRID_ROWS && 
+                n.col >= 0 && n.col < BUBBLE_GRID_COLS &&
+                !this.bubbleGrid[n.row][n.col]) {
+                
+                const pos = this.getBubblePosition(n.row, n.col);
+                const dist = MathUtils.distance(
+                    flyingBubble.x, flyingBubble.y,
+                    pos.x, pos.y
+                );
+                
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    bestPos = { row: n.row, col: n.col, isOddRow: n.isOddRow };
+                }
+            }
+        }
+        
+        return bestPos;
+    }
+    
+    attachBubbleToGrid(nearestBubble = null) {
+        if (!this.flyingBubble) return;
+        
+        let targetPos = null;
+        
+        if (nearestBubble) {
+            targetPos = this.findNearestEmptyPosition(nearestBubble, this.flyingBubble);
+        }
+        
+        if (!targetPos) {
+            targetPos = this.findBestGridPosition(this.flyingBubble);
+        }
+        
+        if (!targetPos) {
             this.flyingBubble = null;
             return;
         }
         
-        const bubbleX = isOddRow 
-            ? (targetCol + 1) * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS
-            : targetCol * BUBBLE_RADIUS * 2 + BUBBLE_RADIUS;
-        const bubbleY = 50 + targetRow * (BUBBLE_RADIUS * 2 * 0.85);
+        if (targetPos.row >= BUBBLE_GRID_ROWS) {
+            this.flyingBubble = null;
+            return;
+        }
         
-        this.bubbleGrid[targetRow][targetCol] = {
-            x: bubbleX,
-            y: bubbleY,
+        const pos = this.getBubblePosition(targetPos.row, targetPos.col);
+        
+        this.bubbleGrid[targetPos.row][targetPos.col] = {
+            x: pos.x,
+            y: pos.y,
             radius: BUBBLE_RADIUS,
             color: this.flyingBubble.color,
-            row: targetRow,
-            col: targetCol,
-            isOddRow: isOddRow,
+            row: targetPos.row,
+            col: targetPos.col,
+            isOddRow: targetPos.isOddRow,
             connectedToTop: false
         };
         
         this.flyingBubble = null;
         
-        this.checkMatches(targetRow, targetCol);
+        this.checkMatches(targetPos.row, targetPos.col);
     }
     
     getNeighbors(row, col, isOddRow) {
