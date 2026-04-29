@@ -39,6 +39,7 @@ class Game {
         this.pluginManager.register(ROOM_TYPES.FALL, FallRoom);
         this.pluginManager.register(ROOM_TYPES.RUSSIAN_ROULETTE, RussianRouletteRoom);
         this.pluginManager.register(ROOM_TYPES.RACE, RaceRoom);
+        this.pluginManager.register(ROOM_TYPES.BUBBLE, BubbleRoom);
     }
     
     setupEventListeners() {
